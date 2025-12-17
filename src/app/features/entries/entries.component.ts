@@ -54,6 +54,8 @@ export class EntriesComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
         // Clear API service caches for fresh data
         this.api.clearCaches();
+        // Reset page numbers
+        this.updatePageNumbers();
         this.loadEntries();
       }
     });
@@ -64,18 +66,22 @@ export class EntriesComponent implements OnInit, OnDestroy {
     this.destroy$.next();
     this.destroy$.complete();
     
-    if (this.subscription) {
+    // Subscriptions are automatically cleaned up by takeUntil, but unsubscribe manually as backup
+    if (this.subscription && !this.subscription.closed) {
       this.subscription.unsubscribe();
     }
-    if (this.siteChangeSubscription) {
+    if (this.siteChangeSubscription && !this.siteChangeSubscription.closed) {
       this.siteChangeSubscription.unsubscribe();
     }
     this.dateTimeCache.clear();
   }
 
   loadEntries(): void {
-    // Don't unsubscribe from in-flight requests - let them complete naturally
-    // Only track new subscriptions to clean up on destroy
+    // Unsubscribe from previous subscription if it exists and is still active
+    // This prevents multiple concurrent requests when buttons are clicked rapidly
+    if (this.subscription && !this.subscription.closed) {
+      this.subscription.unsubscribe();
+    }
     
     this.loading = true;
     this.cdr.markForCheck();
@@ -84,6 +90,8 @@ export class EntriesComponent implements OnInit, OnDestroy {
       takeUntil(this.destroy$)
     ).subscribe({
       next: (res) => {
+        // API response structure: { records: [...], totalRecords: number, pageNumber: number, pageSize: number }
+        // Fallback: also check for data array and total field
         this.records = res.records || res.data || [];
         this.totalRecords = res.totalRecords || res.total || this.records.length;
         this.totalPages = Math.ceil(this.totalRecords / this.pageSize);
@@ -117,6 +125,7 @@ export class EntriesComponent implements OnInit, OnDestroy {
     if (page >= 1 && page <= this.totalPages) {
       this.currentPage = page;
       this.updatePageNumbers();
+      this.cdr.markForCheck(); // Trigger change detection for button states
       this.loadEntries();
     }
   }
@@ -125,6 +134,7 @@ export class EntriesComponent implements OnInit, OnDestroy {
     if (this.currentPage > 1) {
       this.currentPage--;
       this.updatePageNumbers();
+      this.cdr.markForCheck(); // Trigger change detection for button states
       this.loadEntries();
     }
   }
@@ -133,6 +143,7 @@ export class EntriesComponent implements OnInit, OnDestroy {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
       this.updatePageNumbers();
+      this.cdr.markForCheck(); // Trigger change detection for button states
       this.loadEntries();
     }
   }

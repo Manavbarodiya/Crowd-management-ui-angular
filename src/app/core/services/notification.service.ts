@@ -5,6 +5,7 @@ export interface Alert {
   actionType: string;
   zone: string;
   site: string;
+  siteId?: string; // Add siteId to track which site the alert belongs to
   severity: string;
   timestamp: number | string;
   message: string;
@@ -18,6 +19,7 @@ export class NotificationService {
   public alerts$ = this.alertsSubject.asObservable();
   private readonly MAX_ALERTS = 50;
   private selectedDate: Date = new Date();
+  private currentSiteId: string | null = null; // Track current site for filtering
 
   addAlert(alert: Alert): void {
     this.alerts.unshift(alert);
@@ -53,6 +55,16 @@ export class NotificationService {
     return this.selectedDate;
   }
 
+  setCurrentSiteId(siteId: string | null): void {
+    this.currentSiteId = siteId;
+    // Re-emit alerts to trigger filtering when site changes
+    this.alertsSubject.next([...this.alerts]);
+  }
+
+  getCurrentSiteId(): string | null {
+    return this.currentSiteId;
+  }
+
   getFilteredAlerts(): Alert[] {
     const today = new Date();
     today.setHours(0, 0, 0, 0);
@@ -64,7 +76,20 @@ export class NotificationService {
       return [];
     }
     
-    // For today, return all alerts
+    // Filter alerts by current siteId if set
+    if (this.currentSiteId) {
+      return this.alerts.filter(alert => {
+        // Match by siteId if available, otherwise match by site name
+        if (alert.siteId) {
+          return alert.siteId === this.currentSiteId;
+        }
+        // Fallback: try to match by site name (in case siteId is not in alert data)
+        // This handles cases where alert only has site name
+        return alert.site === this.currentSiteId || alert.raw?.siteId === this.currentSiteId;
+      });
+    }
+    
+    // If no site is selected, return all alerts (shouldn't happen in normal flow)
     return this.alerts;
   }
 

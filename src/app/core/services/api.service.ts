@@ -325,11 +325,17 @@ export class ApiService {
   getEntryExit(pageNumber = 1, pageSize = 50) {
     const cacheKey = `${pageNumber}-${pageSize}`;
     
-    if (!this.entryExitCache.has(cacheKey)) {
-      this.entryExitCache.set(cacheKey, this.createEntryExitCache(pageNumber, pageSize));
+    // For pagination, always fetch fresh data to ensure correct page is shown
+    // Clear the cache entry for this page before creating a new request
+    if (this.entryExitCache.has(cacheKey)) {
+      this.entryExitCache.delete(cacheKey);
     }
     
-    return this.entryExitCache.get(cacheKey)!;
+    // Create new request for this page
+    const observable = this.createEntryExitCache(pageNumber, pageSize);
+    this.entryExitCache.set(cacheKey, observable);
+    
+    return observable;
   }
 
   getOccupancy(fromUtc?: number, toUtc?: number) {
