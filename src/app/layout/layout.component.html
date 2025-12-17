@@ -1,0 +1,83 @@
+<div class="layout">
+  <!-- SIDEBAR -->
+  <aside class="sidebar">
+    <div class="logo-container">
+      <mat-icon class="logo-icon">cloud</mat-icon>
+      <span class="logo-text">kloudspot</span>
+    </div>
+
+    <nav class="nav-menu">
+      <a
+        routerLink="/"
+        routerLinkActive="active"
+        [routerLinkActiveOptions]="{ exact: true }"
+        class="nav-item"
+      >
+        <mat-icon class="nav-icon">home</mat-icon>
+        <span>{{ getTranslation('overview') }}</span>
+      </a>
+
+      <a routerLink="/entries" routerLinkActive="active" class="nav-item">
+        <mat-icon class="nav-icon">expand</mat-icon>
+        <span>{{ getTranslation('crowdEntries') }}</span>
+      </a>
+    </nav>
+
+    <a class="logout-btn" (click)="logout()">
+      <mat-icon class="logout-icon">power_settings_new</mat-icon>
+      <span>{{ getTranslation('logout') }}</span>
+    </a>
+  </aside>
+
+  <!-- MAIN CONTENT AREA -->
+  <div class="main-wrapper">
+    <!-- HEADER -->
+    <header class="header">
+      <div class="header-left">
+        <span class="page-title">Crowd Solutions</span>
+
+        <div class="location-select" (click)="toggleSiteDropdown()">
+          <mat-icon class="location-icon">location_on</mat-icon>
+          <span class="location-text">{{ selectedSite?.name || 'Select Site' }}</span>
+          <mat-icon class="dropdown-icon" [class.rotated]="showSiteDropdown">expand_more</mat-icon>
+          
+          <div class="site-dropdown" *ngIf="showSiteDropdown" (click)="$event.stopPropagation()">
+            <div 
+              class="site-option" 
+              *ngFor="let site of sites; trackBy: trackBySiteId"
+              [class.active]="selectedSite?.siteId === site.siteId"
+              (click)="selectSite(site)">
+              <mat-icon class="location-icon-small">location_on</mat-icon>
+              <div class="site-info">
+                <span class="site-name">{{ site.name || site.siteId }}</span>
+                <span class="site-location">{{ site.city || '' }}{{ site.city && site.country ? ', ' : '' }}{{ site.country || '' }}</span>
+              </div>
+            </div>
+            <div class="site-option empty" *ngIf="sites.length === 0">
+              <span>No sites available</span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="header-right">
+        <div class="lang-switch">
+          <button class="lang-btn" [class.active]="currentLang === 'en'" (click)="setLanguage('en')">En</button>
+          <span class="lang-separator">&nbsp;</span>
+          <button class="lang-btn" [class.active]="currentLang === 'ar'" (click)="setLanguage('ar')">ع</button>
+        </div>
+
+        <app-notification-bell></app-notification-bell>
+
+        <div class="user-profile">
+          <mat-icon class="profile-avatar">account_circle</mat-icon>
+        </div>
+      </div>
+    </header>
+
+    <!-- PAGE CONTENT -->
+    <main class="content">
+      <router-outlet></router-outlet>
+    </main>
+  </div>
+</div>

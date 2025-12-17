@@ -1,0 +1,33 @@
+<div class="notification-bell-container">
+  <button class="bell-button" (click)="toggleDropdown()" type="button">
+    <mat-icon class="bell-icon">notifications</mat-icon>
+    <span *ngIf="unreadCount > 0" class="badge">{{ unreadCount > 99 ? '99+' : unreadCount }}</span>
+  </button>
+
+  <div *ngIf="showDropdown" class="dropdown-overlay" (click)="closeDropdown()"></div>
+
+  <div *ngIf="showDropdown" class="notification-dropdown">
+    <div class="dropdown-header">
+      <h3>Notifications</h3>
+      <button *ngIf="alerts.length > 0" class="clear-btn" (click)="clearAll()">Clear All</button>
+    </div>
+    
+    <div class="alerts-list">
+      <div *ngIf="alerts.length === 0" class="no-alerts">
+        <p>No notifications</p>
+      </div>
+      
+      <div 
+        *ngFor="let alert of alerts.slice(0, 10); trackBy: trackByAlertId" 
+        class="alert-item"
+        [class]="'alert-' + alert.severity">
+        <div class="alert-icon">{{ alert.actionType === 'entry' ? '→' : '←' }}</div>
+        <div class="alert-content">
+          <div class="alert-message">{{ alert.message }}</div>
+          <div class="alert-time">{{ formatAlertTime(alert.timestamp) }}</div>
+        </div>
+      </div>
+    </div>
+  </div>
+</div>
+

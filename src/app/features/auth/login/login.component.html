@@ -1,0 +1,54 @@
+<div class="login-page">
+  <div class="login-overlay">
+    <!-- LEFT TEXT -->
+    <div class="login-left">
+      <h1>
+        Welcome to the<br />
+        Crowd Management System
+      </h1>
+    </div>
+
+    <!-- LOGIN CARD -->
+    <div class="login-card">
+      <div class="login-header">
+        <div class="logo-wrapper">
+          <img src="/assets/kloudspot-logo.svg" alt="Kloudspot" />
+        </div>
+      </div>
+
+      <form [formGroup]="form" (ngSubmit)="submit()">
+        <label>Log In *</label>
+        <input
+          type="text"
+          placeholder="Enter Username or Email"
+          formControlName="email"
+          autocomplete="username"
+        />
+
+        <label>Password *</label>
+        <div class="password-field">
+          <input
+            [type]="showPassword ? 'text' : 'password'"
+            placeholder="********"
+            formControlName="password"
+            autocomplete="current-password"
+          />
+          <button
+            type="button"
+            class="eye"
+            (click)="togglePassword($event)"
+            aria-label="Toggle password visibility"
+          >
+            👁
+          </button>
+        </div>
+
+        <button type="submit" [disabled]="loading || form.invalid">
+          {{ loading ? 'Signing in…' : 'Login' }}
+        </button>
+
+        <p class="error" *ngIf="error">{{ error }}</p>
+      </form>
+    </div>
+  </div>
+</div>

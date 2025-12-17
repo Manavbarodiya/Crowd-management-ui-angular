@@ -1,0 +1,131 @@
+<div class="dashboard">
+  <div class="section-header">
+    <h2>Overview</h2>
+    <button class="date-picker-btn">
+      <mat-icon class="calendar-icon">calendar_today</mat-icon>
+      <span>Today</span>
+    </button>
+  </div>
+
+  <div class="stats-grid">
+    <div class="card">
+      <div class="stat-title">Live Occupancy</div>
+      <div class="stat-value" *ngIf="!loading">{{ liveOccupancy }}</div>
+      <div *ngIf="loading" class="skeleton"></div>
+      <div *ngIf="!loading" class="stat-trend">
+        <span class="live-indicator">
+          <span class="live-dot"></span>
+          <span>Live</span>
+        </span>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stat-title">Today's Footfall</div>
+      <div class="stat-value" *ngIf="!loading">{{ todaysFootfall.toLocaleString() }}</div>
+      <div *ngIf="loading" class="skeleton"></div>
+      <div *ngIf="!loading && previousFootfall > 0" class="stat-trend" [class.trend-up]="getFootfallChange().isPositive" [class.trend-down]="!getFootfallChange().isPositive">
+        <ng-container *ngIf="getFootfallChange() as footfallChange">
+          <span class="trend-wavy">{{ footfallChange.isPositive ? '↗' : '↘' }}</span>
+          <span>{{ footfallChange.value.toFixed(0) }}% {{ footfallChange.isPositive ? 'More' : 'Less' }} than yesterday</span>
+        </ng-container>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stat-title">Avg Dwell Time</div>
+      <div class="stat-value" *ngIf="!loading">{{ Math.floor(avgDwellTime) }}min {{ Math.round((avgDwellTime % 1) * 60) }}sec</div>
+      <div *ngIf="loading" class="skeleton"></div>
+      <div *ngIf="!loading && previousDwellTime > 0" class="stat-trend" [class.trend-up]="getDwellTimeChange().isPositive" [class.trend-down]="!getDwellTimeChange().isPositive">
+        <ng-container *ngIf="getDwellTimeChange() as dwellTimeChange">
+          <span class="trend-wavy">{{ dwellTimeChange.isPositive ? '↗' : '↘' }}</span>
+          <span>{{ dwellTimeChange.value.toFixed(0) }}% {{ dwellTimeChange.isPositive ? 'More' : 'Less' }} than yesterday</span>
+        </ng-container>
+      </div>
+    </div>
+  </div>
+
+  <div class="chart-section">
+    <div class="chart-header">
+      <div class="stat-title">Overall Occupancy</div>
+      <div class="live-indicator-wrapper">
+        <div class="live-badge">LIVE</div>
+      </div>
+    </div>
+    <div class="chart-container-wrapper">
+      <ngx-charts-line-chart
+      *ngIf="occupancyChartData.length > 0"
+      [view]="chartOptions.view"
+      [scheme]="'vivid'"
+      [results]="occupancyChartData"
+      [gradient]="chartOptions.gradient"
+      [xAxis]="chartOptions.showXAxis"
+      [yAxis]="chartOptions.showYAxis"
+      [legend]="chartOptions.showLegend"
+      [showXAxisLabel]="chartOptions.showXAxisLabel"
+      [showYAxisLabel]="chartOptions.showYAxisLabel"
+      [xAxisLabel]="chartOptions.xAxisLabel"
+      [yAxisLabel]="'Occupancy'"
+      [autoScale]="chartOptions.autoScale"
+      [timeline]="chartOptions.timeline"
+      [animations]="chartOptions.animations">
+      </ngx-charts-line-chart>
+      <div *ngIf="occupancyChartData.length === 0 && !loading" class="no-data">No occupancy data available</div>
+      <div *ngIf="loading" class="skeleton-chart"></div>
+    </div>
+  </div>
+
+  <h3 class="demographics-title">Demographics</h3>
+  <div class="demographics-grid">
+    <div class="card">
+      <div class="stat-title">Chart of Demographics</div>
+      <div class="donut-container">
+        <ngx-charts-pie-chart
+          *ngIf="demographicsAnalysisChartData.length > 0"
+          [view]="pieChartOptions.view"
+          [scheme]="'vivid'"
+          [results]="demographicsAnalysisChartData"
+          [legend]="false"
+          [labels]="false"
+          [doughnut]="true"
+          [animations]="pieChartOptions.animations">
+        </ngx-charts-pie-chart>
+        <div *ngIf="demographicsAnalysisChartData.length === 0 && !loading" class="no-data-small">No data</div>
+        <div *ngIf="loading" class="skeleton-donut"></div>
+      </div>
+      <div class="demographics-legend" *ngIf="!loading && demographicsAnalysisChartData.length > 0">
+        <div class="legend-item">
+          <mat-icon class="legend-icon male">person</mat-icon>
+          <span>{{ getMalePercentage() }}% Males</span>
+        </div>
+        <div class="legend-item">
+          <mat-icon class="legend-icon female">person</mat-icon>
+          <span>{{ getFemalePercentage() }}% Females</span>
+        </div>
+      </div>
+    </div>
+
+    <div class="card">
+      <div class="stat-title">Demographics Analysis</div>
+      <ngx-charts-line-chart
+        *ngIf="demographicsChartData.length > 0"
+        [view]="demographicsChartOptions.view"
+        [scheme]="'vivid'"
+        [results]="demographicsChartData"
+        [gradient]="demographicsChartOptions.gradient"
+        [xAxis]="demographicsChartOptions.showXAxis"
+        [yAxis]="demographicsChartOptions.showYAxis"
+        [legend]="demographicsChartOptions.showLegend"
+        [showXAxisLabel]="demographicsChartOptions.showXAxisLabel"
+        [showYAxisLabel]="demographicsChartOptions.showYAxisLabel"
+        [xAxisLabel]="demographicsChartOptions.xAxisLabel"
+        [yAxisLabel]="'Count'"
+        [autoScale]="demographicsChartOptions.autoScale"
+        [timeline]="demographicsChartOptions.timeline"
+        [animations]="demographicsChartOptions.animations">
+      </ngx-charts-line-chart>
+      <div *ngIf="demographicsChartData.length === 0 && !loading" class="no-data">No demographics data available</div>
+      <div *ngIf="loading" class="skeleton-chart"></div>
+    </div>
+  </div>
+</div>

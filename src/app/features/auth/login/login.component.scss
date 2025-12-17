@@ -1,0 +1,200 @@
+.login-page {
+  min-height: 100vh;
+  width: 100vw;
+  display: flex;
+  position: relative;
+
+  // Blurred office background
+  background-image: url('/assets/login-bg.jpg');
+  background-position: center center;
+  background-repeat: no-repeat;
+  background-size: cover;
+  
+  // Apply blur effect to background
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: url('/assets/login-bg.jpg');
+    background-position: center center;
+    background-repeat: no-repeat;
+    background-size: cover;
+    filter: blur(8px);
+    z-index: 0;
+  }
+}
+
+/* Overlay */
+.login-overlay {
+  flex: 1;
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 80px;
+  position: relative;
+  z-index: 1;
+
+  background: linear-gradient(
+    to right,
+    rgba(0, 0, 0, 0.5),
+    rgba(0, 0, 0, 0.3)
+  );
+}
+
+/* LEFT TEXT */
+.login-left h1 {
+  color: #ffffff;
+  font-size: 44px;
+  font-weight: 600;
+  max-width: 520px;
+  line-height: 1.2;
+}
+
+/* LOGIN CARD */
+.login-card {
+  width: 420px;
+  background: #ffffff;
+  border-radius: 12px;
+  overflow: hidden;
+  box-shadow: 0 20px 50px rgba(0, 0, 0, 0.4);
+}
+
+/* HEADER */
+.login-header {
+  background: linear-gradient(135deg, #0a5f5c, #0f8f8b);
+  padding: 36px 24px;
+  text-align: center;
+  position: relative;
+  overflow: hidden;
+  
+  // Geometric pattern overlay
+  &::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    background-image: 
+      radial-gradient(circle at 20% 30%, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+      radial-gradient(circle at 80% 70%, rgba(255, 255, 255, 0.1) 1px, transparent 1px),
+      linear-gradient(45deg, transparent 30%, rgba(255, 255, 255, 0.05) 50%, transparent 70%);
+    background-size: 40px 40px, 40px 40px, 100% 100%;
+    background-position: 0 0, 20px 20px, 0 0;
+    opacity: 0.6;
+  }
+}
+
+.logo-wrapper {
+  display: flex;
+  justify-content: center;
+  align-items: center;
+  position: relative;
+  z-index: 1;
+}
+
+.logo-wrapper img {
+  height: 52px;
+  max-width: 220px;
+  width: auto;
+  object-fit: contain;
+  filter: drop-shadow(0 1px 2px rgba(0, 0, 0, 0.25));
+}
+
+/* FORM */
+.login-card form {
+  padding: 30px;
+}
+
+.login-card label {
+  font-size: 13px;
+  font-weight: 500;
+  color: #555;
+}
+
+.login-card input {
+  width: 100%;
+  padding: 12px;
+  margin: 6px 0 18px;
+  border: 1px solid #ddd;
+  border-radius: 6px;
+  font-size: 14px;
+}
+
+.login-card input:focus {
+  outline: none;
+  border-color: #009688;
+}
+
+/* PASSWORD */
+.password-field {
+  position: relative;
+}
+
+.password-field .eye {
+  position: absolute;
+  right: 12px;
+  top: 10px;
+  background: none;
+  border: none;
+  cursor: pointer;
+  font-size: 16px;
+  opacity: 0.6;
+}
+
+.password-field .eye:hover {
+  opacity: 1;
+}
+
+/* BUTTON */
+.login-card button[type='submit'] {
+  width: 100%;
+  padding: 12px;
+  background: #009688;
+  color: white;
+  border: none;
+  border-radius: 6px;
+  font-size: 15px;
+  font-weight: 500;
+  cursor: pointer;
+}
+
+.login-card button[type='submit']:disabled {
+  opacity: 0.6;
+  cursor: not-allowed;
+}
+
+/* ERROR */
+.error {
+  margin-top: 12px;
+  color: #d32f2f;
+  font-size: 13px;
+  text-align: center;
+}
+
+/* RESPONSIVE */
+@media (max-width: 1024px) {
+  .login-overlay {
+    padding: 40px;
+  }
+
+  .login-left h1 {
+    font-size: 36px;
+  }
+}
+
+@media (max-width: 768px) {
+  .login-overlay {
+    flex-direction: column;
+    justify-content: center;
+    gap: 40px;
+    text-align: center;
+  }
+
+  .login-left h1 {
+    max-width: 100%;
+  }
+}
