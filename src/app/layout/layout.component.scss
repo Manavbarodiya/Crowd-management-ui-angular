@@ -47,6 +47,7 @@
   height: 70px;
   display: flex;
   align-items: center;
+  justify-content: center; // Center the logo since text is removed
   padding: 0 24px;
   font-size: 1.25rem;
   font-weight: 700;
@@ -56,16 +57,11 @@
 }
 
 .logo-image {
-  height: 32px;
+  height: 60px; // Increased by ~25% from 48px
   width: auto;
-  max-width: 180px;
-  margin-right: 10px;
+  max-width: 275px; // Increased by ~25% from 220px
   object-fit: contain;
   filter: brightness(0) invert(1); // Make logo white for dark sidebar
-}
-
-.logo-text {
-  text-transform: lowercase;
 }
 
 .nav-menu {
@@ -332,12 +328,27 @@
   align-items: center;
   justify-content: center;
   cursor: pointer;
+  overflow: hidden;
+  background-color: #e5e7eb;
+  border: 2px solid #ffffff;
+  box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
-.profile-avatar {
-  font-size: 28px;
-  width: 28px;
-  height: 28px;
+.profile-avatar-image {
+  width: 100%;
+  height: 100%;
+  object-fit: cover;
+  border-radius: 50%;
+}
+
+.profile-avatar-initials {
+  width: 100%;
+  height: 100%;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  font-weight: 600;
+  font-size: 14px;
   color: #6b7280;
 }
 

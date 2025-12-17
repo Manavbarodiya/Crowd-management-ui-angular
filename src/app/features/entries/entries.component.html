@@ -25,7 +25,11 @@
         <tr *ngFor="let r of records; trackBy: trackByRecordId">
           <td>
             <div class="user-cell">
-              <div class="table-avatar">{{ (r.personName || r.name || r.visitorName || 'N/A').charAt(0).toUpperCase() }}</div>
+              <img 
+                [src]="getAvatarUrl(r)" 
+                class="table-avatar"
+                [alt]="(r.personName || r.name || r.visitorName || 'N/A')"
+                (error)="onImageError($event)">
               <span>{{ r.personName || r.name || r.visitorName || 'N/A' }}</span>
             </div>
           </td>

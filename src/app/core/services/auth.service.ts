@@ -7,6 +7,7 @@ import { environment } from '../../../environments/environment';
 export class AuthService {
   private tokenKey = 'ks_auth_token';
   private siteIdKey = 'ks_site_id';
+  private userKey = 'ks_user_info';
 
   constructor(private http: HttpClient) {}
 
@@ -18,9 +19,38 @@ export class AuthService {
         tap(res => {
           if (res?.token) {
             localStorage.setItem(this.tokenKey, res.token);
+            // Store user info if available in response
+            if (res.user || res.email || res.name || res.username) {
+              const userInfo = {
+                email: res.email || res.user?.email || email,
+                name: res.name || res.user?.name || res.username || res.user?.username || email.split('@')[0],
+                imageUrl: res.imageUrl || res.user?.imageUrl || res.avatar || res.user?.avatar || res.profileImage || res.user?.profileImage || null
+              };
+              localStorage.setItem(this.userKey, JSON.stringify(userInfo));
+            } else {
+              // Store basic info from email
+              const userInfo = {
+                email: email,
+                name: email.split('@')[0],
+                imageUrl: null
+              };
+              localStorage.setItem(this.userKey, JSON.stringify(userInfo));
+            }
           }
         })
       );
+  }
+
+  getUserInfo(): { email: string; name: string; imageUrl: string | null } | null {
+    const userStr = localStorage.getItem(this.userKey);
+    if (userStr) {
+      try {
+        return JSON.parse(userStr);
+      } catch {
+        return null;
+      }
+    }
+    return null;
   }
 
   getToken(): string | null {
@@ -34,6 +64,7 @@ export class AuthService {
   logout(): void {
     localStorage.removeItem(this.tokenKey);
     localStorage.removeItem(this.siteIdKey);
+    localStorage.removeItem(this.userKey);
   }
 
   getSiteId(): string | null {

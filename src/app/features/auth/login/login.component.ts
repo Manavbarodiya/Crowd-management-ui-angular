@@ -1,4 +1,4 @@
-import { Component } from '@angular/core';
+import { Component, ViewChild, ElementRef } from '@angular/core';
 import { CommonModule } from '@angular/common';
 import { FormBuilder, ReactiveFormsModule, Validators } from '@angular/forms';
 import { Router } from '@angular/router';
@@ -13,6 +13,8 @@ import { AuthService } from '../../../core/services/auth.service';
   styleUrls: ['./login.component.scss']
 })
 export class LoginComponent {
+  @ViewChild('passwordInput') passwordInput!: ElementRef<HTMLInputElement>;
+  
   loading = false;
   error = '';
   showPassword = false;
@@ -27,6 +29,14 @@ export class LoginComponent {
     private auth: AuthService,
     private router: Router
   ) {}
+
+  onEmailEnter(event: Event): void {
+    event.preventDefault();
+    // Move focus to password field when Enter is pressed in email field
+    if (this.passwordInput?.nativeElement) {
+      this.passwordInput.nativeElement.focus();
+    }
+  }
 
   togglePassword(event: Event): void {
     event.preventDefault();

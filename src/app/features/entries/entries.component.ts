@@ -210,5 +210,22 @@ export class EntriesComponent implements OnInit, OnDestroy {
     return page;
   }
 
+  getAvatarUrl(record: any): string {
+    // Generate avatar URL using pravatar.cc based on personId or personName
+    // This creates consistent placeholder avatars for each person
+    const seed = record.personId 
+      ? (record.personId.charCodeAt(0) % 10) + 1
+      : ((record.personName || record.name || record.visitorName || 'N/A').charCodeAt(0) % 10) + 1;
+    return `https://i.pravatar.cc/150?img=${seed}`;
+  }
+
+  onImageError(event: Event): void {
+    // Fallback to default avatar if image fails to load
+    const img = event.target as HTMLImageElement;
+    if (img) {
+      img.src = 'https://i.pravatar.cc/150?img=1';
+    }
+  }
+
   Math = Math;
 }

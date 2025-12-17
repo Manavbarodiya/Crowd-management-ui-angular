@@ -3,7 +3,6 @@
   <aside class="sidebar">
     <div class="logo-container">
       <img src="/assets/kloudspot-logo.svg" alt="Kloudspot" class="logo-image" />
-      <span class="logo-text">kloudspot</span>
     </div>
 
     <nav class="nav-menu">
@@ -70,7 +69,13 @@
         <app-notification-bell></app-notification-bell>
 
         <div class="user-profile">
-          <mat-icon class="profile-avatar">account_circle</mat-icon>
+          <img 
+            *ngIf="userInfo"
+            [src]="getAvatarUrl()" 
+            [alt]="userInfo.name || userInfo.email"
+            (error)="onProfileImageError($event)"
+            class="profile-avatar-image">
+          <div *ngIf="!userInfo" class="profile-avatar-initials">{{ getUserInitials() }}</div>
         </div>
       </div>
     </header>

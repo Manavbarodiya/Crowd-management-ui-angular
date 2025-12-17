@@ -55,7 +55,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     xAxisLabel: 'Time',
     timeline: false,
     autoScale: true,
-    view: [700, 300] as [number, number], // Fixed width for Demographics Analysis
+    view: [600, 300] as [number, number], // Reduced width to fit container and prevent cutoff
     animations: false
   };
   pieChartOptions = {

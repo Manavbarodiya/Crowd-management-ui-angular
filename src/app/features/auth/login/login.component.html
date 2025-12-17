@@ -23,15 +23,18 @@
           placeholder="Email or Username"
           formControlName="email"
           autocomplete="username"
+          (keydown.enter)="onEmailEnter($event)"
         />
 
         <label>Password *</label>
         <div class="password-field">
           <input
+            #passwordInput
             [type]="showPassword ? 'text' : 'password'"
             placeholder="********"
             formControlName="password"
             autocomplete="current-password"
+            (keydown.enter)="submit()"
           />
           <button
             type="button"

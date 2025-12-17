@@ -110,13 +110,7 @@ tbody tr {
   width: 32px;
   height: 32px;
   border-radius: 50%;
-  background-color: #e5e7eb;
-  display: flex;
-  align-items: center;
-  justify-content: center;
-  font-weight: 600;
-  font-size: 0.85rem;
-  color: #6b7280;
+  object-fit: cover;
   flex-shrink: 0;
   border: 2px solid #ffffff;
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
