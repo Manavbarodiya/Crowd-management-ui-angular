@@ -51,10 +51,19 @@ export class ApiService {
   private payload(extra: any = {}) {
     const now = Date.now();
     const siteId = this.auth.getSiteId();
+    // For Overall Occupancy: use 8:00 to 18:00 (10 hours) as per prototype
+    // Use local time (user expects 8:00-18:00 in their timezone)
+    const today = new Date();
+    today.setHours(8, 0, 0, 0);
+    const fromUtc = today.getTime(); // This is already in UTC milliseconds
+    const endOfDay = new Date();
+    endOfDay.setHours(18, 0, 0, 0);
+    const toUtc = Math.min(now, endOfDay.getTime()); // End at 18:00 local time or current time, whichever is earlier
+    
     const payload = {
       siteId: siteId || '',
-      fromUtc: now - this.TWELVE_HOURS_MS,
-      toUtc: now,
+      fromUtc,
+      toUtc,
       ...extra
     };
     return payload;
@@ -131,6 +140,7 @@ export class ApiService {
   }
 
   private createDemographicsCache() {
+    // Use 8:00 to 18:00 range for all charts
     const payload = this.payload();
     return this.http.post<any>(`${this.base}/api/analytics/demographics`, payload).pipe(
       timeout(this.REQUEST_TIMEOUT),

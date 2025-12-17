@@ -155,34 +155,42 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // - Request deduplication prevents duplicate calls
     
     // Calculate date range based on selected date
+    // All charts: 8:00 to 18:00 (10 hours) as per prototype
+    // Use local time for date calculation (user expects 8:00-18:00 in their timezone)
     const selectedDateStart = new Date(this.selectedDate);
-    selectedDateStart.setHours(0, 0, 0, 0);
+    selectedDateStart.setHours(8, 0, 0, 0); // Start at 8:00 AM local time
     const selectedDateEnd = new Date(this.selectedDate);
-    selectedDateEnd.setHours(23, 59, 59, 999);
+    selectedDateEnd.setHours(18, 0, 0, 0); // End at 6:00 PM (18:00) local time
     
-    const fromUtc = selectedDateStart.getTime();
-    const toUtc = selectedDateEnd.getTime();
-    
-    // Check if selected date is today - use cache for better performance
+    // Check if selected date is today
     const today = new Date();
     today.setHours(0, 0, 0, 0);
-    const isToday = selectedDateStart.getTime() === today.getTime();
+    const selectedDateOnly = new Date(this.selectedDate);
+    selectedDateOnly.setHours(0, 0, 0, 0);
+    const isToday = selectedDateOnly.getTime() === today.getTime();
     
+    // API expects UTC timestamps, so convert local time to UTC milliseconds
+    const fromUtc = selectedDateStart.getTime();
+    // For today, use current time (not 18:00) to avoid showing future data
+    // For past/future dates, use 18:00
+    const toUtc = isToday ? Math.min(Date.now(), selectedDateEnd.getTime()) : selectedDateEnd.getTime();
+    
+    // All charts use 8:00 to 18:00 (10 hours) time range
     // Use startWith to show loading state immediately, but don't block UI
     const allRequestsSub = forkJoin({
-      footfall: (isToday ? this.api.getFootfall() : this.api.getFootfall(fromUtc, toUtc)).pipe(
+      footfall: this.api.getFootfall(fromUtc, toUtc).pipe(
         catchError(err => {
           console.error('Error loading footfall:', err);
           return of(null);
         })
       ),
-      dwell: (isToday ? this.api.getDwell() : this.api.getDwell(fromUtc, toUtc)).pipe(
+      dwell: this.api.getDwell(fromUtc, toUtc).pipe(
         catchError(err => {
           console.error('Error loading dwell:', err);
           return of(null);
         })
       ),
-      occupancy: (isToday ? this.api.getOccupancy() : this.api.getOccupancy(fromUtc, toUtc)).pipe(
+      occupancy: this.api.getOccupancy(fromUtc, toUtc).pipe(
         catchError(err => {
           if (err.status === 404) {
             return of(null);
@@ -191,7 +199,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           return of(null);
         })
       ),
-      demographics: (isToday ? this.api.getDemographics() : this.api.getDemographics(fromUtc, toUtc)).pipe(
+      demographics: this.api.getDemographics(fromUtc, toUtc).pipe(
         catchError(err => {
           if (err.status === 404) {
             return of(null);
@@ -292,17 +300,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
       let resultIndex = 0;
       for (const item of sampledItems) {
         // Handle different time field names: utc, local, timestamp, hour, time
+        // API returns times in the site's timezone, so use them as-is
         let time = '';
         if (item.local) {
           // Extract time from local string (e.g., "15/12/2025 09:00:00" -> "09:00")
+          // This is already in the site's timezone, so use it directly
           const localMatch = item.local.match(/(\d{2}:\d{2}):\d{2}/);
           if (localMatch) {
             time = localMatch[1];
           } else {
-            time = this.formatTime(item.local);
+            // Try to extract time from other formats
+            const timeMatch = item.local.match(/(\d{1,2}):(\d{2})/);
+            if (timeMatch) {
+              time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+            } else {
+              time = this.formatTime(item.local, true); // Pass flag to not convert timezone
+            }
           }
+        } else if (item.time) {
+          // If there's a time field, use it directly (likely already in site timezone)
+          time = String(item.time);
         } else {
-          time = this.formatTime(item.utc || item.timestamp || item.hour || item.time);
+          // For UTC timestamps, format without timezone conversion (assume API handles conversion)
+          time = this.formatTime(item.utc || item.timestamp || item.hour, true);
         }
         if (time) {
           const value = Number(item.avg || item.occupancy || item.count || item.value || item.average || 0);
@@ -358,17 +378,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
       for (const item of sampledItems) {
         // Handle different time field names: utc, local, timestamp, hour, time
+        // API returns times in the site's timezone, so use them as-is
         let time = '';
         if (item.local) {
           // Extract time from local string (e.g., "15/12/2025 09:00:00" -> "09:00")
+          // This is already in the site's timezone, so use it directly
           const localMatch = item.local.match(/(\d{2}:\d{2}):\d{2}/);
           if (localMatch) {
             time = localMatch[1];
           } else {
-            time = this.formatTime(item.local);
+            // Try to extract time from other formats
+            const timeMatch = item.local.match(/(\d{1,2}):(\d{2})/);
+            if (timeMatch) {
+              time = `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+            } else {
+              time = this.formatTime(item.local, true); // Pass flag to not convert timezone
+            }
           }
+        } else if (item.time) {
+          // If there's a time field, use it directly (likely already in site timezone)
+          time = String(item.time);
         } else {
-          time = this.formatTime(item.utc || item.timestamp || item.hour || item.time);
+          // For UTC timestamps, format without timezone conversion (assume API handles conversion)
+          time = this.formatTime(item.utc || item.timestamp || item.hour, true);
         }
         
         if (time) {
@@ -450,10 +482,26 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.cdr.markForCheck();
   }
 
-  private formatTime(timestamp: number | string): string {
+  private formatTime(timestamp: number | string, useAsIs: boolean = false): string {
     if (!timestamp && timestamp !== 0) return '';
     
     try {
+      // If useAsIs is true, assume timestamp is already in site's timezone
+      // and we should extract the time without timezone conversion
+      if (useAsIs && typeof timestamp === 'string') {
+        // Try to extract time directly from string formats
+        const timeMatch = timestamp.match(/(\d{1,2}):(\d{2})/);
+        if (timeMatch) {
+          return `${timeMatch[1].padStart(2, '0')}:${timeMatch[2]}`;
+        }
+        // Handle "15/12/2025 09:00:00" format - extract time part
+        const dateStrMatch = timestamp.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+        if (dateStrMatch) {
+          const [, , , , hour, minute] = dateStrMatch;
+          return `${hour}:${minute}`;
+        }
+      }
+      
       let date: Date;
       
       // Handle number (epoch milliseconds or seconds)
@@ -464,7 +512,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
         // Handle string formats like "15/12/2025 09:00:00" (DD/MM/YYYY HH:mm:ss)
         const dateStrMatch = timestamp.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
         if (dateStrMatch) {
-          // Parse DD/MM/YYYY HH:mm:ss format
+          // Parse DD/MM/YYYY HH:mm:ss format - treat as local time (site timezone)
           const [, day, month, year, hour, minute, second] = dateStrMatch;
           date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
         } else {
@@ -482,6 +530,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
         return '';
       }
       
+      // If useAsIs, format without timezone conversion (use UTC methods to avoid browser timezone)
+      if (useAsIs) {
+        const hours = date.getUTCHours().toString().padStart(2, '0');
+        const minutes = date.getUTCMinutes().toString().padStart(2, '0');
+        return `${hours}:${minutes}`;
+      }
+      
+      // Otherwise, use local time (for backward compatibility)
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
     } catch {
       // Try to extract hour if it's a number
