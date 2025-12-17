@@ -35,18 +35,27 @@ export class EntriesComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
-    this.loadEntries();
+    // Wait for SiteService notification to ensure siteId is validated
+    // This prevents loading with invalid/stale siteId from previous session
+    let hasLoadedInitialData = false;
     
-    // Listen for site changes and reload entries immediately
+    // Single subscription to handle both initial load and subsequent site changes
     this.siteChangeSubscription = this.siteService.siteChange$.pipe(
       takeUntil(this.destroy$)
     ).subscribe(() => {
-      // Immediately show loading state
-      this.loading = true;
-      this.currentPage = 1; // Reset to first page when site changes
-      this.cdr.markForCheck();
-      // Reload entries (cache is already cleared by SiteService)
-      this.loadEntries();
+      if (!hasLoadedInitialData) {
+        // Initial load - no need to reset page
+        hasLoadedInitialData = true;
+        this.loadEntries();
+      } else {
+        // Subsequent site changes - reset to first page and reload
+        this.loading = true;
+        this.currentPage = 1;
+        this.cdr.markForCheck();
+        // Clear API service caches for fresh data
+        this.api.clearCaches();
+        this.loadEntries();
+      }
     });
   }
 
