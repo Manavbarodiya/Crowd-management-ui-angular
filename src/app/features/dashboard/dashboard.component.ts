@@ -909,8 +909,19 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
     // Only add notifications if selected date is today
     // Notifications are real-time and should only appear for today
-    if (this.isSelectedDateToday()) {
+    const isToday = this.isSelectedDateToday();
+    console.log('🔔 Alert received:', {
+      message: alert.message,
+      isSelectedDateToday: isToday,
+      selectedDate: this.selectedDate.toISOString(),
+      currentDate: new Date().toISOString()
+    });
+    
+    if (isToday) {
       this.notificationService.addAlert(alert);
+      console.log('✅ Alert added to notifications');
+    } else {
+      console.warn('⚠️ Alert NOT added - selected date is not today');
     }
 
     if (severity === 'critical') {
