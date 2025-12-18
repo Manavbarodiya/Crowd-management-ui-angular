@@ -13,7 +13,7 @@ import { SiteService } from '../../core/services/site.service';
 import { NotificationService, Alert } from '../../core/services/notification.service';
 import { AuthService } from '../../core/services/auth.service';
 import { NgxChartsModule } from '@swimlane/ngx-charts';
-import { Subscription, forkJoin, debounceTime, distinctUntilChanged, catchError, of } from 'rxjs';
+import { Subscription, forkJoin, debounceTime, distinctUntilChanged, catchError, of, Subject, switchMap } from 'rxjs';
 import { curveCardinal } from 'd3-shape';
 
 @Component({
@@ -88,6 +88,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private siteChangeSubscription?: Subscription;
   private footfallRefreshPending = false;
   
+  // OPTIMIZATION: Use RxJS Subject for better footfall refresh debouncing
+  private footfallRefreshTrigger$ = new Subject<void>();
+  private footfallRefreshSubscription?: Subscription;
+  
   // Cached computed values for template performance
   private _footfallChange?: { value: number; isPositive: boolean };
   private _dwellTimeChange?: { value: number; isPositive: boolean };
@@ -119,11 +123,58 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Load data immediately if site already exists (for navigation back to dashboard)
     // Otherwise wait for siteChange$ to emit (initial load after login)
     if (this.auth.getSiteId()) {
-      this.loadDashboardData();
-    }
+        this.loadDashboardData();
+      }
     // If no site exists, we wait for siteChange$ to emit (handled by layout component)
     
     this.setupSocketListeners();
+    this.setupFootfallRefresh();
+  }
+  
+  /**
+   * OPTIMIZATION: Setup optimized footfall refresh using RxJS operators
+   * Replaces setTimeout-based debouncing with proper RxJS debounceTime and switchMap
+   */
+  private setupFootfallRefresh(): void {
+    this.footfallRefreshSubscription = this.footfallRefreshTrigger$.pipe(
+      debounceTime(3000), // Debounce for 3 seconds
+      switchMap(() => {
+        // Cancel previous request if new one comes in
+        return this.api.getFootfall().pipe(
+          catchError(err => {
+            const errorInfo = {
+              type: err.name || 'HTTP Error',
+              status: err.status,
+              statusText: err.statusText,
+              message: err.message,
+              error: err.error,
+              context: 'footfall refresh after alert',
+              timestamp: new Date().toISOString()
+            };
+            console.error('❌ Dashboard: Error refreshing footfall after alert:', errorInfo);
+            return of(null);
+          })
+        );
+      })
+    ).subscribe({
+      next: (res) => {
+        if (res) {
+          const footfallValue = res.footfall ?? res.count ?? res.todaysFootfall ?? res.totalFootfall ?? 0;
+          this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
+          this.previousFootfall = res.previousFootfall ?? res.previousCount ?? res.yesterdaysFootfall ?? 0;
+          // Pre-compute formatted display value
+          this.footfallDisplayValue = this.todaysFootfall.toLocaleString();
+          // Invalidate cached computed values
+          this._footfallChange = undefined;
+          this.updateDateDisplayText();
+          this.cdr.markForCheck();
+        }
+        this.footfallRefreshPending = false;
+      },
+      error: () => {
+        this.footfallRefreshPending = false;
+      }
+    });
   }
 
   ngOnDestroy(): void {
@@ -134,6 +185,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (this.siteChangeSubscription) {
       this.siteChangeSubscription.unsubscribe();
     }
+    if (this.footfallRefreshSubscription) {
+      this.footfallRefreshSubscription.unsubscribe();
+    }
+    // Complete the subject to prevent memory leaks
+    this.footfallRefreshTrigger$.complete();
   }
 
   private loadDashboardData(): void {
@@ -191,47 +247,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     
     
     // PHASE 1: High Priority - Summary Cards (Footfall & Dwell)
+    // OPTIMIZED: Use batch API method for parallel loading with shared payload
     // These APIs power summary cards and must load first
-    const phase1Sub = forkJoin({
-      footfall: this.api.getFootfall(fromUtc, toUtc).pipe(
-        catchError(err => {
-          const errorInfo = {
-            type: err.name || 'HTTP Error',
-            status: err.status,
-            statusText: err.statusText,
-            message: err.message,
-            error: err.error,
-            endpoint: 'footfall',
-            timestamp: new Date().toISOString()
-          };
-          if (err.name === 'TimeoutError') {
-            console.error('⏱️ Dashboard: Footfall request timeout:', errorInfo);
-          } else {
-            console.error('❌ Dashboard: Error loading footfall:', errorInfo);
-          }
-          return of(null);
-        })
-      ),
-      dwell: this.api.getDwell(fromUtc, toUtc).pipe(
-        catchError(err => {
-          const errorInfo = {
-            type: err.name || 'HTTP Error',
-            status: err.status,
-            statusText: err.statusText,
-            message: err.message,
-            error: err.error,
-            endpoint: 'dwell',
-            timestamp: new Date().toISOString()
-          };
-          if (err.name === 'TimeoutError') {
-            console.error('⏱️ Dashboard: Dwell request timeout:', errorInfo);
-          } else {
-            console.error('❌ Dashboard: Error loading dwell:', errorInfo);
-          }
-          return of(null);
-        })
-      )
-    }).subscribe({
+    const phase1Sub = this.api.getSummaryCardsBatch(fromUtc, toUtc).subscribe({
       next: (phase1Results) => {
         // Process footfall
         if (phase1Results.footfall) {
@@ -271,60 +289,18 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
         
         // PHASE 2: Low Priority - Charts (Occupancy & Demographics)
+        // OPTIMIZED: Use batch API method for parallel loading with shared payload
         // These are heavy APIs and load in background after Phase 1 completes
         // Must NOT block summary cards
-        const phase2Sub = forkJoin({
-          occupancy: this.api.getOccupancy(fromUtc, toUtc).pipe(
-            catchError(err => {
-              const errorInfo = {
-                type: err.name || 'HTTP Error',
-                status: err.status,
-                statusText: err.statusText,
-                message: err.message,
-                error: err.error,
-                endpoint: 'occupancy',
-                timestamp: new Date().toISOString()
-              };
-              if (err.status === 404) {
-                console.warn('⚠️ Dashboard: Occupancy data not found (404):', errorInfo);
-              } else if (err.name === 'TimeoutError') {
-                console.error('⏱️ Dashboard: Occupancy request timeout:', errorInfo);
-              } else {
-                console.error('❌ Dashboard: Error loading occupancy:', errorInfo);
-              }
-              return of(null);
-            })
-          ),
-          demographics: this.api.getDemographics(fromUtc, toUtc).pipe(
-            catchError(err => {
-              const errorInfo = {
-                type: err.name || 'HTTP Error',
-                status: err.status,
-                statusText: err.statusText,
-                message: err.message,
-                error: err.error,
-                endpoint: 'demographics',
-                timestamp: new Date().toISOString()
-              };
-              if (err.status === 404) {
-                console.warn('⚠️ Dashboard: Demographics data not found (404):', errorInfo);
-              } else if (err.name === 'TimeoutError') {
-                console.error('⏱️ Dashboard: Demographics request timeout:', errorInfo);
-              } else {
-                console.error('❌ Dashboard: Error loading demographics:', errorInfo);
-              }
-              return of(null);
-            })
-          )
-        }).subscribe({
-          next: (phase2Results) => {
-            // Process occupancy
-            if (phase2Results.occupancy) {
-              this.processOccupancyData(phase2Results.occupancy);
+        const phase2Sub = this.api.getChartsBatch(fromUtc, toUtc).subscribe({
+          next: (batchResults) => {
+            // Process occupancy from batch results
+            if (batchResults.occupancy) {
+              this.processOccupancyData(batchResults.occupancy);
               // Set initial live occupancy from the most recent bucket only if selected date is today
               if (this.isSelectedDateToday()) {
-                if (phase2Results.occupancy.buckets && Array.isArray(phase2Results.occupancy.buckets) && phase2Results.occupancy.buckets.length > 0) {
-                  const latestBucket = phase2Results.occupancy.buckets[phase2Results.occupancy.buckets.length - 1];
+                if (batchResults.occupancy.buckets && Array.isArray(batchResults.occupancy.buckets) && batchResults.occupancy.buckets.length > 0) {
+                  const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
                   const latestOccupancy = Number(latestBucket.avg || latestBucket.occupancy || latestBucket.value || 0);
                   if (latestOccupancy > 0) {
                     this.liveOccupancy = Math.round(latestOccupancy);
@@ -338,15 +314,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
                 this.liveOccupancy = 0;
               }
             } else {
+              // Clear data on error/null to show "no data available"
               this.occupancyChartData = [];
               this.liveOccupancy = 0;
             }
             this.loadingOccupancy = false;
             
-            // Process demographics
-            if (phase2Results.demographics) {
-              this.processDemographicsData(phase2Results.demographics);
-              this.processDemographicsAnalysisData(phase2Results.demographics);
+            // Process demographics from batch results
+            if (batchResults.demographics) {
+              this.processDemographicsData(batchResults.demographics);
+              this.processDemographicsAnalysisData(batchResults.demographics);
             } else {
               // Clear data on error/null to show "no data available"
               this.demographicsChartData = [];
@@ -403,13 +380,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
         this.cdr.markForCheck();
         
         // Even if Phase 1 fails, try Phase 2 (charts) in background
-        const phase2Sub = forkJoin({
-          occupancy: this.api.getOccupancy(fromUtc, toUtc).pipe(catchError(() => of(null))),
-          demographics: this.api.getDemographics(fromUtc, toUtc).pipe(catchError(() => of(null)))
-        }).subscribe({
-          next: (phase2Results) => {
-            if (phase2Results.occupancy) {
-              this.processOccupancyData(phase2Results.occupancy);
+        // OPTIMIZED: Use batch API method for parallel loading with shared payload
+        const phase2Sub = this.api.getChartsBatch(fromUtc, toUtc).subscribe({
+          next: (batchResults) => {
+            if (batchResults.occupancy) {
+              this.processOccupancyData(batchResults.occupancy);
             } else {
               // Clear data on error/null to show "no data available"
               this.occupancyChartData = [];
@@ -417,9 +392,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
             }
             this.loadingOccupancy = false;
             
-            if (phase2Results.demographics) {
-              this.processDemographicsData(phase2Results.demographics);
-              this.processDemographicsAnalysisData(phase2Results.demographics);
+            if (batchResults.demographics) {
+              this.processDemographicsData(batchResults.demographics);
+              this.processDemographicsAnalysisData(batchResults.demographics);
             } else {
               // Clear data on error/null to show "no data available"
               this.demographicsChartData = [];
@@ -541,7 +516,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     } else {
       // Only set to empty if it wasn't already empty to avoid unnecessary changes
       if (this.occupancyChartData.length > 0) {
-        this.occupancyChartData = [];
+      this.occupancyChartData = [];
       }
       console.warn('⚠️ Occupancy data processed but no valid series found. Data structure:', data);
     }
@@ -888,40 +863,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
       console.warn('⚠️ Critical alert received:', alert.message);
     }
 
+    // OPTIMIZATION: Use RxJS Subject for better debouncing and request cancellation
     // Debounce footfall refresh to prevent excessive API calls
     if (actionType === 'entry' || actionType === 'exit') {
       if (!this.footfallRefreshPending) {
         this.footfallRefreshPending = true;
-        setTimeout(() => {
-          const footfallRefreshSub = this.api.getFootfall().subscribe({
-            next: (res) => {
-              const footfallValue = res.footfall ?? res.count ?? res.todaysFootfall ?? res.totalFootfall ?? 0;
-              this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
-              this.previousFootfall = res.previousFootfall ?? res.previousCount ?? res.yesterdaysFootfall ?? 0;
-              // Pre-compute formatted display value
-              this.footfallDisplayValue = this.todaysFootfall.toLocaleString();
-              // Invalidate cached computed values
-              this._footfallChange = undefined;
-              this.updateDateDisplayText();
-              this.footfallRefreshPending = false;
-              this.cdr.markForCheck();
-            },
-            error: (err) => {
-              const errorInfo = {
-                type: err.name || 'HTTP Error',
-                status: err.status,
-                statusText: err.statusText,
-                message: err.message,
-                error: err.error,
-                context: 'footfall refresh after alert',
-                timestamp: new Date().toISOString()
-              };
-              console.error('❌ Dashboard: Error refreshing footfall after alert:', errorInfo);
-              this.footfallRefreshPending = false;
-            }
-          });
-          this.httpSubscriptions.push(footfallRefreshSub);
-        }, 3000); // Debounce for 3 seconds to reduce API calls
+        // Trigger the debounced refresh
+        this.footfallRefreshTrigger$.next();
       }
     }
   }
@@ -934,7 +882,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return this._footfallChange;
     }
     // Calculate and cache
-    this._footfallChange = this.calculateFootfallChange();
+      this._footfallChange = this.calculateFootfallChange();
     return this._footfallChange;
   }
 
@@ -950,7 +898,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       return this._dwellTimeChange;
     }
     // Calculate and cache
-    this._dwellTimeChange = this.calculateDwellTimeChange();
+      this._dwellTimeChange = this.calculateDwellTimeChange();
     return this._dwellTimeChange;
   }
 
@@ -959,7 +907,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const change = ((this.avgDwellTime - this.previousDwellTime) / this.previousDwellTime) * 100;
     return { value: Math.abs(change), isPositive: change >= 0 };
   }
-  
+
   onDateChange(date: Date | null): void {
     if (date) {
       this.selectedDate = date;
@@ -994,13 +942,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     if (selected.getTime() === today.getTime()) {
       this.dateDisplayText = 'Today';
     } else {
-      const yesterday = new Date(today);
-      yesterday.setDate(yesterday.getDate() - 1);
-      if (selected.getTime() === yesterday.getTime()) {
+    const yesterday = new Date(today);
+    yesterday.setDate(yesterday.getDate() - 1);
+    if (selected.getTime() === yesterday.getTime()) {
         this.dateDisplayText = 'Yesterday';
       } else {
         this.dateDisplayText = this.selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-      }
+  }
     }
   }
 

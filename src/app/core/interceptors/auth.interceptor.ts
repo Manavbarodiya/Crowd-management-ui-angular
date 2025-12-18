@@ -7,19 +7,35 @@ export const AuthInterceptor: HttpInterceptorFn = (req, next) => {
   const auth = inject(AuthService);
   const token = auth.getToken();
 
+  // Skip token validation for login endpoint
+  if (req.url.includes('/api/auth/login')) {
+    return next(req);
+  }
+
   if (token) {
+    // Check if token is expired before making the request
+    if (auth.isTokenExpired()) {
+      console.warn('⚠️ AuthInterceptor: Token expired, request may fail:', {
+        url: req.url,
+        method: req.method,
+        expiration: auth.getTokenExpiration(),
+        timeUntilExpiration: auth.getTimeUntilExpiration(),
+        timestamp: new Date().toISOString()
+      });
+      // Still proceed with request - let backend handle 401/403
+      // This allows graceful handling of token expiration
+    }
+    
     req = req.clone({
       setHeaders: { Authorization: `Bearer ${token}` }
     });
   } else {
-    // Log warning if request is made without token (except for login endpoint)
-    if (!req.url.includes('/api/auth/login')) {
-      console.warn('⚠️ AuthInterceptor: Request made without token:', {
-        url: req.url,
-        method: req.method,
-        timestamp: new Date().toISOString()
-      });
-    }
+    // Log warning if request is made without token
+    console.warn('⚠️ AuthInterceptor: Request made without token:', {
+      url: req.url,
+      method: req.method,
+      timestamp: new Date().toISOString()
+    });
   }
 
   return next(req).pipe(

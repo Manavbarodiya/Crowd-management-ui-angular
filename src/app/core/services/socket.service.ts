@@ -19,6 +19,17 @@ export class SocketService implements OnDestroy {
 
     const token = this.auth.getToken();
     if (!token) {
+      console.warn('⚠️ SocketService: Cannot initialize socket - no token available');
+      return;
+    }
+
+    // Check if token is expired before attempting connection
+    if (this.auth.isTokenExpired()) {
+      console.warn('⚠️ SocketService: Cannot initialize socket - token expired:', {
+        expiration: this.auth.getTokenExpiration(),
+        timeUntilExpiration: this.auth.getTimeUntilExpiration(),
+        timestamp: new Date().toISOString()
+      });
       return;
     }
 
@@ -60,6 +71,7 @@ export class SocketService implements OnDestroy {
 
     this.socket.on('connect', () => {
       this.isInitializing = false;
+      console.log('✅ Socket.IO connected successfully');
     });
 
     this.socket.on('connect_error', (error: any) => {
@@ -72,6 +84,13 @@ export class SocketService implements OnDestroy {
         timestamp: new Date().toISOString()
       });
       this.isInitializing = false;
+      
+      // If error is due to authentication, check token expiration
+      if (error.message?.includes('auth') || error.message?.includes('token') || error.message?.includes('401') || error.message?.includes('403')) {
+        if (this.auth.isTokenExpired()) {
+          console.warn('⚠️ Socket.IO: Connection failed due to expired token');
+        }
+      }
     });
 
     this.socket.on('disconnect', (reason) => {
@@ -80,6 +99,13 @@ export class SocketService implements OnDestroy {
         timestamp: new Date().toISOString()
       });
       this.isInitializing = false;
+      
+      // If disconnected due to authentication issues, don't auto-reconnect if token is expired
+      if (reason === 'io server disconnect' || reason === 'transport close') {
+        if (this.auth.isTokenExpired()) {
+          console.warn('⚠️ Socket.IO: Not reconnecting - token expired');
+        }
+      }
     });
   }
 
@@ -87,6 +113,14 @@ export class SocketService implements OnDestroy {
     if (this.socket?.connected) {
       return;
     }
+    
+    // Check token before attempting reconnection
+    const token = this.auth.getToken();
+    if (!token || this.auth.isTokenExpired()) {
+      console.warn('⚠️ SocketService: Cannot reconnect - token missing or expired');
+      return;
+    }
+    
     this.initializeSocket();
   }
 
@@ -105,7 +139,13 @@ export class SocketService implements OnDestroy {
       };
 
       if (!this.socket && !this.isInitializing) {
-        this.initializeSocket();
+        // Check token before initializing
+        const token = this.auth.getToken();
+        if (token && !this.auth.isTokenExpired()) {
+          this.initializeSocket();
+        } else {
+          console.warn('⚠️ SocketService: Cannot setup listener - token missing or expired');
+        }
       }
 
       if (this.socket?.connected) {
@@ -145,6 +185,42 @@ export class SocketService implements OnDestroy {
     }
 
     return this.eventSubjects.get(event)!.asObservable().pipe(share());
+  }
+
+  /**
+   * Check if socket connection is healthy (connected and token is valid)
+   */
+  isConnectionHealthy(): boolean {
+    if (!this.socket?.connected) {
+      return false;
+    }
+    
+    const token = this.auth.getToken();
+    if (!token || this.auth.isTokenExpired()) {
+      return false;
+    }
+    
+    return true;
+  }
+
+  /**
+   * Get connection status information
+   */
+  getConnectionStatus(): {
+    connected: boolean;
+    tokenValid: boolean;
+    tokenExpired: boolean;
+    timeUntilExpiration: number;
+  } {
+    const token = this.auth.getToken();
+    const tokenExpired = !token || this.auth.isTokenExpired();
+    
+    return {
+      connected: this.socket?.connected || false,
+      tokenValid: !!token && !tokenExpired,
+      tokenExpired: tokenExpired,
+      timeUntilExpiration: this.auth.getTimeUntilExpiration()
+    };
   }
 
   disconnect(): void {

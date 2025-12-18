@@ -143,7 +143,7 @@
           <mat-spinner diameter="40"></mat-spinner>
           <p class="chart-loading-text">Loading demographics data...</p>
         </div>
-        <ngx-charts-area-chart
+      <ngx-charts-area-chart
           *ngIf="demographicsChartData.length > 0 && demographicsChartData[0]?.series?.length >= 1 && !loadingDemographics"
         [view]="demographicsChartOptions.view || [600, 300]"
         [scheme]="'vivid'"
@@ -158,10 +158,10 @@
         [xAxisLabel]="demographicsChartOptions.xAxisLabel"
         [yAxisLabel]="'Count'"
         [autoScale]="demographicsChartOptions.autoScale"
-          [timeline]="demographicsChartOptions.timeline"
-          [animations]="demographicsChartOptions.animations">
-        </ngx-charts-area-chart>
-        <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">No demographics data available</div>
+        [timeline]="demographicsChartOptions.timeline"
+        [animations]="demographicsChartOptions.animations">
+      </ngx-charts-area-chart>
+      <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">No demographics data available</div>
       </div>
     </div>
   </div>
