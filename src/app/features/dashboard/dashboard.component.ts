@@ -33,12 +33,22 @@ export class DashboardComponent implements OnInit, OnDestroy {
   liveOccupancy = 0;
   todaysFootfall = 0;
   avgDwellTime = 0;
+  dwellRecords = 0; // Backend provides this
 
   previousFootfall = 0;
   previousDwellTime = 0;
   occupancyChartData: any[] = [];
   demographicsChartData: any[] = [];
   demographicsAnalysisChartData: any[] = [];
+  
+  // Timezone information from backend
+  siteTimezone: string = '';
+  occupancyTimezone: string = '';
+  demographicsTimezone: string = '';
+  
+  // Demographics totals for display
+  totalMaleCount = 0;
+  totalFemaleCount = 0;
   chartOptions = {
     showXAxis: true,
     showYAxis: true,
@@ -287,8 +297,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         
         // Process dwell - Use backend data directly (API: { siteId, fromUtc, toUtc, avgDwellMinutes, dwellRecords })
         if (phase1Results.dwell) {
-          // API always provides 'avgDwellMinutes' field
+          // API always provides 'avgDwellMinutes' and 'dwellRecords' fields
           this.avgDwellTime = phase1Results.dwell.avgDwellMinutes ?? 0;
+          this.dwellRecords = phase1Results.dwell.dwellRecords ?? 0;
           this.previousDwellTime = 0; // Backend doesn't provide previousDwellTime
           
           // Format display value: "23min 8sec" format
@@ -299,6 +310,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this._dwellTimeChange = undefined; // Backend doesn't provide dwellTimeChange
         } else {
           this.avgDwellTime = 0;
+          this.dwellRecords = 0;
           this.dwellTimeDisplayValue = '0min 0sec';
           this.previousDwellTime = 0;
           this._dwellTimeChange = undefined;
@@ -318,6 +330,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
             // Process occupancy from batch results
             if (batchResults.occupancy) {
               this.processOccupancyData(batchResults.occupancy);
+              // Extract timezone from API response
+              this.occupancyTimezone = batchResults.occupancy.timezone || '';
+              if (!this.siteTimezone && this.occupancyTimezone) {
+                this.siteTimezone = this.occupancyTimezone;
+              }
               // Backend doesn't provide liveOccupancy - use latest bucket for today
               if (this.isSelectedDateToday() && batchResults.occupancy.buckets?.length > 0) {
                 const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
@@ -336,6 +353,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
             if (batchResults.demographics) {
               this.processDemographicsData(batchResults.demographics);
               this.processDemographicsAnalysisData(batchResults.demographics);
+              // Extract timezone from API response
+              this.demographicsTimezone = batchResults.demographics.timezone || '';
+              if (!this.siteTimezone && this.demographicsTimezone) {
+                this.siteTimezone = this.demographicsTimezone;
+              }
             } else {
               // Clear data on error/null to show "no data available"
               this.demographicsChartData = [];
@@ -532,6 +554,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       totalMale += Number(item.male) || 0;    // API always provides 'male' field
       totalFemale += Number(item.female) || 0; // API always provides 'female' field
     }
+    
+    // Store totals for display
+    this.totalMaleCount = totalMale;
+    this.totalFemaleCount = totalFemale;
     
     this.demographicsAnalysisChartData = [
       { name: 'Male', value: totalMale },

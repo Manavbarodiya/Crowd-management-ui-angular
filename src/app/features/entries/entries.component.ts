@@ -8,7 +8,10 @@ import { Subscription } from 'rxjs';
 @Component({
   standalone: true,
   selector: 'app-entries',
-  imports: [CommonModule, MatIconModule],
+  imports: [
+    CommonModule, 
+    MatIconModule
+  ],
   templateUrl: './entries.component.html',
   styleUrls: ['./entries.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -23,6 +26,7 @@ export class EntriesComponent implements OnInit, OnDestroy {
   pageNumbers: (number | string)[] = []; // Expose as property to avoid method calls in template (can include '...' for ellipsis)
   paginationRangeStart = 0;
   paginationRangeEnd = 0;
+  
   private subscription?: Subscription;
   private siteChangeSubscription?: Subscription;
   // Cache for computed values
@@ -76,8 +80,12 @@ export class EntriesComponent implements OnInit, OnDestroy {
         // Pre-process records to compute all formatting upfront (performance optimization)
         const rawRecords = res.records || res.data || [];
         this.records = rawRecords.map((record: any) => this.preprocessRecord(record));
-        this.totalRecords = res.totalRecords || res.total || this.records.length;
+        
+        // Store API total records
+        const apiTotalRecords = res.totalRecords || res.total || this.records.length;
+        this.totalRecords = apiTotalRecords;
         this.totalPages = Math.ceil(this.totalRecords / this.pageSize);
+        
         // Update page numbers and pagination range
         this.updatePageNumbers();
         this.updatePaginationRange();
@@ -244,8 +252,6 @@ export class EntriesComponent implements OnInit, OnDestroy {
   }
 
   private preprocessRecord(record: any): any {
-    // Optimized: Use exact API structure
-    // Backend provides: { personId, personName, gender, zoneId, zoneName, severity, entryUtc, entryLocal, exitUtc, exitLocal, dwellMinutes }
     const personName = record.personName || 'N/A';
     const gender = record.gender || 'N/A';
     const isActive = !record.exitUtc && !record.exitLocal; // Active if no exit time

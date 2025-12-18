@@ -139,6 +139,16 @@
   font-weight: 600;
   color: #1f2937;
   margin-bottom: 10px;
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+  
+  .stat-subtitle {
+    font-size: 0.75rem;
+    font-weight: 400;
+    color: #6b7280;
+  }
 }
 
 .stat-value {
@@ -170,6 +180,12 @@
   gap: 5px;
   color: #6b7280;
   margin-top: 8px;
+}
+
+.stat-meta {
+  font-size: 0.75rem;
+  color: #9ca3af;
+  margin-top: 4px;
 }
 
 .trend-wavy {
@@ -257,11 +273,31 @@
   min-height: 32px; // Ensure consistent height
   width: 100%;
   gap: 16px; // Add gap between title and LIVE badge
+  flex-wrap: wrap;
   
   .stat-title {
     flex: 1;
     margin: 0; // Remove default margin
     min-width: 0; // Allow text to shrink if needed
+  }
+  
+  .chart-meta {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    font-size: 0.75rem;
+    color: #6b7280;
+    
+    .timezone-info {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      
+      &::before {
+        content: '🌐';
+        font-size: 0.9em;
+      }
+    }
   }
 }
 
@@ -499,14 +535,32 @@
 .legend-item {
   display: flex;
   gap: 10px;
-  margin-bottom: 5px;
+  margin-bottom: 8px;
   align-items: center;
+  
+  .legend-details {
+    display: flex;
+    flex-direction: column;
+    gap: 2px;
+    
+    .legend-percentage {
+      font-weight: 600;
+      color: #1f2937;
+      font-size: 0.95rem;
+    }
+    
+    .legend-count {
+      font-size: 0.75rem;
+      color: #6b7280;
+    }
+  }
 }
 
 .legend-icon {
   font-size: 16px;
   width: 16px;
   height: 16px;
+  flex-shrink: 0;
 }
 
 .legend-icon.male {
@@ -519,7 +573,36 @@
 
 .no-data {
   text-align: center;
-  padding: 2rem 0;
+  padding: 3rem 2rem;
+  color: #6b7280;
+  
+  .no-data-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #d1d5db;
+    margin: 0 auto 16px;
+    display: block;
+  }
+  
+  h3 {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 1.1rem;
+    font-weight: 600;
+  }
+  
+  p {
+    margin: 8px 0;
+    color: #6b7280;
+    font-size: 0.9rem;
+  }
+  
+  .no-data-hint {
+    font-size: 0.85rem;
+    color: #9ca3af;
+    margin-top: 12px;
+  }
   font-size: 0.9rem;
   color: #6b7280;
 }

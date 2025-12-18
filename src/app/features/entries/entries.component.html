@@ -1,10 +1,6 @@
 <div class="entries">
   <div class="section-header">
     <h2>Overview</h2>
-    <button class="date-picker-btn">
-      <mat-icon class="calendar-icon">calendar_today</mat-icon>
-      <span>Today</span>
-    </button>
   </div>
 
   <div *ngIf="loading" class="loading">Loading...</div>
@@ -14,7 +10,7 @@
       <thead>
         <tr>
           <th>Name</th>
-          <th>Sex</th>
+          <th>Gender</th>
           <th>Entry</th>
           <th>Exit</th>
           <th>Dwell Time</th>
@@ -39,7 +35,10 @@
           <td>{{ r._dwellTime }}</td>
         </tr>
         <tr *ngIf="records.length === 0">
-          <td colspan="5" class="no-data">No records found</td>
+          <td colspan="5" class="no-data">
+            <mat-icon class="no-data-icon">search_off</mat-icon>
+            <div>No records found</div>
+          </td>
         </tr>
       </tbody>
     </table>

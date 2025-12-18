@@ -119,16 +119,19 @@ export class ApiService {
     return payload;
   }
 
-  private entryExitPayload(pageNumber: number, pageSize: number) {
-    const now = Date.now();
+  private entryExitPayload(pageNumber: number, pageSize: number, fromUtc?: number, toUtc?: number) {
     const siteId = this.auth.getSiteId();
-    // OPTIMIZATION: Reduce time range for entry-exit to improve performance
-    // Use 30 minutes instead of 1 hour for faster queries
+    const now = Date.now();
+    
+    // If dates provided, use them; otherwise use default (last 30 minutes)
     const THIRTY_MINUTES_MS = 30 * 60 * 1000;
+    const finalFromUtc = fromUtc !== undefined ? fromUtc : (now - THIRTY_MINUTES_MS);
+    const finalToUtc = toUtc !== undefined ? toUtc : now;
+    
     return {
       siteId: siteId || '',
-      fromUtc: now - THIRTY_MINUTES_MS,
-      toUtc: now,
+      fromUtc: finalFromUtc,
+      toUtc: finalToUtc,
       pageNumber,
       pageSize
     };
@@ -329,8 +332,8 @@ export class ApiService {
     return this.dwellCache$;
   }
 
-  private createEntryExitCache(pageNumber: number, pageSize: number) {
-    const payload = this.entryExitPayload(pageNumber, pageSize);
+  private createEntryExitCache(pageNumber: number, pageSize: number, fromUtc?: number, toUtc?: number) {
+    const payload = this.entryExitPayload(pageNumber, pageSize, fromUtc, toUtc);
     return this.http.post<any>(
       `${this.base}/api/analytics/entry-exit`,
       payload
@@ -363,17 +366,17 @@ export class ApiService {
     );
   }
 
-  getEntryExit(pageNumber = 1, pageSize = 50) {
-    // Entry-exit data is time-sensitive (last 30 minutes), so we can't cache by page number alone
+  getEntryExit(pageNumber = 1, pageSize = 50, fromUtc?: number, toUtc?: number) {
+    // Entry-exit data is time-sensitive, so we can't cache by page number alone
     // Each request gets fresh data to ensure accuracy
     // Clear any existing cache for this page to ensure fresh data
-    const cacheKey = `${pageNumber}-${pageSize}`;
+    const cacheKey = `${pageNumber}-${pageSize}-${fromUtc || 'default'}-${toUtc || 'default'}`;
     if (this.entryExitCache.has(cacheKey)) {
       this.entryExitCache.delete(cacheKey);
     }
     
     // Create new request (bypass cache for time-sensitive data)
-    return this.createEntryExitCache(pageNumber, pageSize);
+    return this.createEntryExitCache(pageNumber, pageSize, fromUtc, toUtc);
   }
 
   getOccupancy(fromUtc?: number, toUtc?: number) {

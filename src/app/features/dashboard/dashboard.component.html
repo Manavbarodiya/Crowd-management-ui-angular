@@ -41,7 +41,10 @@
     </div>
 
     <div class="card">
-      <div class="stat-title">Today's Footfall</div>
+      <div class="stat-title">
+        Today's Footfall
+        <span class="stat-subtitle" *ngIf="siteTimezone">({{ siteTimezone }})</span>
+      </div>
       <div class="stat-value" [class.loading-state]="loadingFootfall">
         <span *ngIf="!loadingFootfall">{{ footfallDisplayValue }}</span>
         <mat-spinner *ngIf="loadingFootfall" diameter="24" class="inline-spinner"></mat-spinner>
@@ -60,6 +63,9 @@
         <span *ngIf="!loadingDwell">{{ dwellTimeDisplayValue }}</span>
         <mat-spinner *ngIf="loadingDwell" diameter="24" class="inline-spinner"></mat-spinner>
       </div>
+      <div class="stat-meta" *ngIf="dwellRecords > 0 && !loadingDwell">
+        Based on {{ dwellRecords | number }} records
+      </div>
       <div *ngIf="previousDwellTime > 0 && !loadingDwell" class="stat-trend" [class.trend-up]="dwellTimeChange.isPositive" [class.trend-down]="!dwellTimeChange.isPositive">
         <ng-container *ngIf="dwellTimeChange as dtc">
           <span class="trend-wavy">{{ dtc.isPositive ? '↗' : '↘' }}</span>
@@ -72,6 +78,9 @@
   <div class="chart-section">
     <div class="chart-header">
       <div class="stat-title">Overall Occupancy</div>
+      <div class="chart-meta" *ngIf="occupancyTimezone">
+        <span class="timezone-info">{{ occupancyTimezone }}</span>
+      </div>
     </div>
     <div class="chart-container-wrapper">
       <div *ngIf="loadingOccupancy" class="chart-loading">
@@ -96,7 +105,12 @@
       [timeline]="chartOptions.timeline"
       [animations]="chartOptions.animations">
       </ngx-charts-area-chart>
-      <div *ngIf="occupancyChartData.length === 0 && !loadingOccupancy" class="no-data">No occupancy data available</div>
+      <div *ngIf="occupancyChartData.length === 0 && !loadingOccupancy" class="no-data">
+        <mat-icon class="no-data-icon">bar_chart</mat-icon>
+        <h3>No Occupancy Data</h3>
+        <p>No occupancy data available for {{ dateDisplayText }}.</p>
+        <p class="no-data-hint">Try selecting a different date or check if the simulation is running.</p>
+      </div>
     </div>
   </div>
 
@@ -127,17 +141,26 @@
       <div class="demographics-legend" *ngIf="!loadingDemographics && demographicsAnalysisChartData.length > 0">
         <div class="legend-item">
           <mat-icon class="legend-icon male">male</mat-icon>
-          <span>{{ malePercentage }}% Males</span>
+          <div class="legend-details">
+            <span class="legend-percentage">{{ malePercentage }}%</span>
+            <span class="legend-count">({{ totalMaleCount | number }} people)</span>
+          </div>
         </div>
         <div class="legend-item">
           <mat-icon class="legend-icon female">female</mat-icon>
-          <span>{{ femalePercentage }}% Females</span>
+          <div class="legend-details">
+            <span class="legend-percentage">{{ femalePercentage }}%</span>
+            <span class="legend-count">({{ totalFemaleCount | number }} people)</span>
+          </div>
         </div>
       </div>
     </div>
 
     <div class="card demographics-analysis-card">
-      <div class="stat-title">Demographics Analysis</div>
+      <div class="stat-title">
+        Demographics Analysis
+        <span class="stat-subtitle" *ngIf="demographicsTimezone">({{ demographicsTimezone }})</span>
+      </div>
       <div class="chart-container-wrapper">
         <div *ngIf="loadingDemographics" class="chart-loading">
           <mat-spinner diameter="40"></mat-spinner>
@@ -161,7 +184,12 @@
         [timeline]="demographicsChartOptions.timeline"
         [animations]="demographicsChartOptions.animations">
       </ngx-charts-area-chart>
-      <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">No demographics data available</div>
+      <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">
+        <mat-icon class="no-data-icon">people</mat-icon>
+        <h3>No Demographics Data</h3>
+        <p>No demographics data available for {{ dateDisplayText }}.</p>
+        <p class="no-data-hint">Try selecting a different date or check if the simulation is running.</p>
+      </div>
       </div>
     </div>
   </div>

@@ -15,33 +15,8 @@
 .section-header h2 {
   margin: 0;
   font-size: 1.25rem;
-    font-weight: 600;
+  font-weight: 600;
   color: #1f2937;
-}
-
-.date-picker-btn {
-  background: white;
-  border: 1px solid #e5e7eb;
-  padding: 8px 16px;
-  border-radius: 6px;
-  font-size: 0.9rem;
-  color: #6b7280;
-  display: flex;
-  align-items: center;
-  gap: 8px;
-  cursor: pointer;
-  transition: all 0.2s;
-}
-
-.date-picker-btn:hover {
-  border-color: #d1d5db;
-  background: #f9fafb;
-}
-
-.calendar-icon {
-  font-size: 16px;
-  width: 16px;
-  height: 16px;
 }
 
 .loading {
@@ -116,11 +91,31 @@ tbody tr {
   box-shadow: 0 1px 3px rgba(0, 0, 0, 0.1);
 }
 
+
 .no-data {
   text-align: center;
   padding: 40px;
   color: #6b7280;
   font-size: 14px;
+  
+  .no-data-icon {
+    font-size: 48px;
+    width: 48px;
+    height: 48px;
+    color: #d1d5db;
+    margin-bottom: 16px;
+  }
+  
+  h3 {
+    margin: 0 0 8px 0;
+    color: #1f2937;
+    font-size: 1.1rem;
+  }
+  
+  p {
+    margin: 8px 0;
+    color: #6b7280;
+  }
 }
 
 .pagination {
