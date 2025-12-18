@@ -66,13 +66,19 @@ export class NotificationService {
   }
 
   getFilteredAlerts(): Alert[] {
+    // Compare dates in UTC to avoid timezone issues (consistent with dashboard component)
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(this.selectedDate);
-    selected.setHours(0, 0, 0, 0);
+    const todayUtc = new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+      0, 0, 0, 0
+    ));
+    // selectedDate should already be normalized to UTC midnight by dashboard component
+    const selectedUtc = new Date(this.selectedDate);
     
-    // Only show notifications for today
-    if (selected.getTime() !== today.getTime()) {
+    // Only show notifications for today (match dashboard logic)
+    if (selectedUtc.getTime() !== todayUtc.getTime()) {
       return [];
     }
     
