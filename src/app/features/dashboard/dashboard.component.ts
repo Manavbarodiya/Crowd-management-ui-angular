@@ -1133,11 +1133,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
   onDateChange(date: Date | null): void {
     if (date) {
       // Normalize date to remove time component - we only care about the date
-      // Use UTC methods to ensure consistent date normalization regardless of timezone
+      // Date picker returns date in local time, so use local date methods
+      // Then convert to UTC for consistent storage and comparison
       const normalizedDate = new Date(Date.UTC(
-        date.getUTCFullYear(),
-        date.getUTCMonth(),
-        date.getUTCDate(),
+        date.getFullYear(),  // Use local year
+        date.getMonth(),     // Use local month
+        date.getDate(),      // Use local date
         0, 0, 0, 0
       ));
       this.selectedDate = normalizedDate;
