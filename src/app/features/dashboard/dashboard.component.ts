@@ -450,10 +450,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
               this.liveOccupancyChange = null;
               
               // Backend doesn't provide liveOccupancy - use latest bucket for today
+              // This serves as fallback when Socket.IO is not connected
               if (this.isSelectedDateToday() && batchResults.occupancy.buckets?.length > 0) {
                 const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
-                this.liveOccupancy = Number(latestBucket.avg) || 0;
-              } else {
+                const occupancyValue = Number(latestBucket.avg) || 0;
+                // Only update if Socket.IO hasn't provided a value yet (Socket.IO takes precedence)
+                // If liveOccupancy is still 0, update from API as fallback
+                if (this.liveOccupancy === 0 || !this.socket.isConnectionHealthy()) {
+                  this.liveOccupancy = occupancyValue;
+                }
+              } else if (!this.isSelectedDateToday()) {
                 this.liveOccupancy = 0;
               }
               
