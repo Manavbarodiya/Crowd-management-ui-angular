@@ -454,13 +454,24 @@ export class DashboardComponent implements OnInit, OnDestroy {
               if (this.isSelectedDateToday() && batchResults.occupancy.buckets?.length > 0) {
                 const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
                 const occupancyValue = Number(latestBucket.avg) || 0;
-                // Only update if Socket.IO hasn't provided a value yet (Socket.IO takes precedence)
-                // If liveOccupancy is still 0, update from API as fallback
-                if (this.liveOccupancy === 0 || !this.socket.isConnectionHealthy()) {
+                // Always update from API if Socket.IO is not connected (Socket.IO takes precedence when connected)
+                // Check socket health - if not connected, use API value
+                const socketHealthy = this.socket.isConnectionHealthy();
+                if (!socketHealthy || this.liveOccupancy === 0) {
                   this.liveOccupancy = occupancyValue;
+                  console.log('📊 Live Occupancy set from API:', {
+                    value: occupancyValue,
+                    socketHealthy: socketHealthy,
+                    bucketCount: batchResults.occupancy.buckets.length
+                  });
                 }
               } else if (!this.isSelectedDateToday()) {
                 this.liveOccupancy = 0;
+              } else {
+                console.warn('⚠️ Live Occupancy: No buckets or date not today', {
+                  isToday: this.isSelectedDateToday(),
+                  bucketsLength: batchResults.occupancy.buckets?.length || 0
+                });
               }
               
               // Load yesterday's occupancy for comparison AFTER current value is set
@@ -645,6 +656,20 @@ export class DashboardComponent implements OnInit, OnDestroy {
       name: 'Occupancy',
       series: series
     }];
+    
+    // Also set live occupancy from latest bucket if today and Socket.IO not connected
+    if (this.isSelectedDateToday() && buckets.length > 0) {
+      const latestBucket = buckets[buckets.length - 1];
+      const occupancyValue = Number(latestBucket.avg) || 0;
+      const socketHealthy = this.socket.isConnectionHealthy();
+      if (!socketHealthy || this.liveOccupancy === 0) {
+        this.liveOccupancy = occupancyValue;
+        console.log('📊 Live Occupancy set from processOccupancyData:', {
+          value: occupancyValue,
+          socketHealthy: socketHealthy
+        });
+      }
+    }
     
     // Calculate and start updating live marker position
     this.calculateLiveMarkerPosition();
@@ -1135,11 +1160,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   isSelectedDateToday(): boolean {
+    // Compare dates in UTC to avoid timezone issues
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(this.selectedDate);
-    selected.setHours(0, 0, 0, 0);
-    return selected.getTime() === today.getTime();
+    const todayUtc = new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+      0, 0, 0, 0
+    ));
+    // selectedDate is already normalized to UTC midnight
+    return this.selectedDate.getTime() === todayUtc.getTime();
   }
 
   private updateChartViewDimensions(): void {
@@ -1168,21 +1198,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateDateDisplayText(): void {
+    // Compare dates in UTC to avoid timezone issues
     const today = new Date();
-    today.setHours(0, 0, 0, 0);
-    const selected = new Date(this.selectedDate);
-    selected.setHours(0, 0, 0, 0);
+    const todayUtc = new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+      0, 0, 0, 0
+    ));
     
-    if (selected.getTime() === today.getTime()) {
+    if (this.selectedDate.getTime() === todayUtc.getTime()) {
       this.dateDisplayText = 'Today';
     } else {
-    const yesterday = new Date(today);
-    yesterday.setDate(yesterday.getDate() - 1);
-    if (selected.getTime() === yesterday.getTime()) {
+      const yesterdayUtc = new Date(Date.UTC(
+        today.getUTCFullYear(),
+        today.getUTCMonth(),
+        today.getUTCDate() - 1,
+        0, 0, 0, 0
+      ));
+      if (this.selectedDate.getTime() === yesterdayUtc.getTime()) {
         this.dateDisplayText = 'Yesterday';
       } else {
         this.dateDisplayText = this.selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
-  }
+      }
     }
   }
 
