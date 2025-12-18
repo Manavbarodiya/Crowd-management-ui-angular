@@ -14,6 +14,38 @@
   max-width: 100%;
   box-sizing: border-box;
   overflow-x: hidden; // Prevent horizontal scrolling
+  position: relative;
+  
+  &.loading-overlay-active {
+    min-height: 60vh;
+  }
+}
+
+// Overall loading overlay
+.loading-overlay {
+  position: absolute;
+  top: 0;
+  left: 0;
+  right: 0;
+  bottom: 0;
+  background: rgba(255, 255, 255, 0.95);
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  z-index: 1000;
+  backdrop-filter: blur(2px);
+  
+  .loading-text {
+    margin-top: 20px;
+    color: #6b7280;
+    font-size: 0.95rem;
+    font-weight: 500;
+  }
+  
+  ::ng-deep .mat-mdc-progress-spinner {
+    --mdc-circular-progress-active-indicator-color: #3b82f6;
+  }
 }
 
 .section-header {
@@ -114,6 +146,21 @@
   font-weight: 700;
   color: #1f2937;
   margin-bottom: 5px;
+  display: flex;
+  align-items: center;
+  min-height: 40px;
+  
+  &.loading-state {
+    color: #9ca3af;
+  }
+  
+  .inline-spinner {
+    display: inline-block;
+    
+    ::ng-deep .mat-mdc-progress-spinner {
+      --mdc-circular-progress-active-indicator-color: #3b82f6;
+    }
+  }
 }
 
 .stat-trend {
@@ -247,64 +294,44 @@
   overflow-x: hidden; // Prevent horizontal overflow
   min-height: 250px; // Ensure consistent height for skeleton/chart
   
+  .chart-loading {
+    position: absolute;
+    top: 0;
+    left: 0;
+    right: 0;
+    bottom: 0;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: center;
+    background: rgba(255, 255, 255, 0.9);
+    z-index: 5;
+    min-height: 250px;
+    
+    &.chart-loading-center {
+      background: transparent;
+    }
+    
+    .chart-loading-text {
+      margin-top: 16px;
+      color: #6b7280;
+      font-size: 0.875rem;
+      font-weight: 500;
+    }
+    
+    ::ng-deep .mat-mdc-progress-spinner {
+      --mdc-circular-progress-active-indicator-color: #3b82f6;
+    }
+  }
+  
   // Ensure charts render above skeleton
   ngx-charts-area-chart,
   ngx-charts-pie-chart {
     position: relative;
-    z-index: 2;
-  }
-  
-  // LIVE indicator line positioned at ~85% of chart width (current time)
-  &::after {
-    content: '';
-    position: absolute;
-    top: 0;
-    right: 15%;
-    width: 2px;
-    height: 100%;
-    background: repeating-linear-gradient(
-      to bottom,
-      #ef4444 0px,
-      #ef4444 4px,
-      transparent 4px,
-      transparent 8px
-    );
-    z-index: 10;
-    pointer-events: none;
+    z-index: 10; // Higher than skeleton (z-index: 1) to ensure charts are visible
   }
 }
 
-.live-marker {
-  position: absolute;
-  top: 0;
-  right: 15%;
-  transform: translateX(50%);
-  z-index: 12;
-  pointer-events: none;
-}
-
-.live-marker-badge {
-  display: flex;
-  align-items: center;
-  gap: 4px;
-  background: #ef4444;
-  color: white;
-  padding: 4px 8px;
-  border-radius: 4px;
-  font-size: 0.75rem;
-  font-weight: 700;
-  white-space: nowrap;
-  box-shadow: 0 2px 4px rgba(0, 0, 0, 0.2);
-  transform: translateX(-50%);
-}
-
-.live-icon {
-  font-size: 8px;
-  width: 8px;
-  height: 8px;
-  color: white;
-  animation: pulse 2s infinite;
-}
 
 @keyframes pulse {
   0%, 100% {
@@ -341,6 +368,13 @@
     overflow-x: auto; // Allow horizontal scroll if needed
     overflow-y: visible;
     min-width: 0; // Allow grid item to shrink below content size
+    position: relative;
+    
+    .chart-container-wrapper {
+      .chart-loading {
+        min-height: 300px;
+      }
+    }
     
     // Demographics Analysis chart container
     ngx-charts-line-chart,
@@ -349,6 +383,8 @@
       max-width: 100% !important;
       display: block;
       overflow: visible;
+      position: relative;
+      z-index: 10;
       
       svg {
         width: 100% !important;
@@ -365,6 +401,7 @@
         width: 100% !important;
         max-width: 100% !important;
       }
+      
     }
   }
 }
@@ -379,6 +416,20 @@
   margin-bottom: 8px;
   width: 100%;
   max-width: 100%;
+  
+  .chart-loading {
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    transform: translate(-50%, -50%);
+    z-index: 5;
+  }
+  
+  // Ensure pie chart renders above loading
+  ngx-charts-pie-chart {
+    position: relative;
+    z-index: 10;
+  }
 }
 
 .donut-center-text {
@@ -403,6 +454,40 @@
   color: #6b7280;
   font-weight: 500;
   margin-top: 4px;
+}
+
+// Position legend at top right for Demographics Analysis chart
+.demographics-analysis-card {
+  .chart-container-wrapper {
+    position: relative;
+    
+    ::ng-deep ngx-charts-area-chart {
+      .chart-legend {
+        position: absolute !important;
+        top: 0 !important;
+        right: 0 !important;
+        left: auto !important;
+        bottom: auto !important;
+        width: auto !important;
+        
+        .legend-labels {
+          display: flex !important;
+          flex-direction: row !important;
+          justify-content: flex-end !important;
+          align-items: flex-start !important;
+          
+          .legend-label {
+            margin-left: 16px !important;
+            margin-right: 0 !important;
+            margin-top: 0 !important;
+            margin-bottom: 0 !important;
+            display: inline-flex !important;
+            align-items: center !important;
+          }
+        }
+      }
+    }
+  }
 }
 
 .demographics-legend {
@@ -475,7 +560,8 @@
   top: 0;
   left: 0;
   right: 0;
-  z-index: 1;
+  z-index: 1; // Lower than charts (z-index: 2)
+  pointer-events: none; // Allow clicks to pass through when hidden
 }
 
 .skeleton-donut {
@@ -490,6 +576,12 @@
   );
   background-size: 400% 100%;
   animation: shimmer 1.4s ease infinite;
+  position: absolute;
+  top: 50%;
+  left: 50%;
+  transform: translate(-50%, -50%);
+  z-index: 1; // Lower than pie chart (z-index: 10)
+  pointer-events: none; // Allow clicks to pass through when hidden
 }
 
 @keyframes shimmer {
@@ -499,6 +591,10 @@
 
 ::ng-deep ngx-charts-line-chart,
 ::ng-deep ngx-charts-area-chart {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  
   text {
     fill: #1f2937 !important;
   }
@@ -508,14 +604,33 @@
   }
 
   svg {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
+    
     * {
       stroke-dashoffset: 0 !important;
     }
   }
+  
+  .chart {
+    display: block !important;
+    width: 100% !important;
+  }
 }
 
 ::ng-deep ngx-charts-pie-chart {
+  display: block !important;
+  width: 100% !important;
+  height: auto !important;
+  
   text {
     fill: #1f2937 !important;
+  }
+  
+  svg {
+    display: block !important;
+    width: 100% !important;
+    height: auto !important;
   }
 }

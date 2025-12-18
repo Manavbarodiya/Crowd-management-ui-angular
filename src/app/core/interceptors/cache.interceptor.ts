@@ -86,8 +86,15 @@ export const CacheInterceptor: HttpInterceptorFn = (req, next) => {
   // Only cache GET and POST requests to analytics endpoints
   const isAnalyticsRequest = req.url.includes('/api/analytics/');
   const isSitesRequest = req.url.includes('/api/sites');
+  // Don't cache entry-exit requests - they're time-sensitive (last 30 minutes)
+  const isEntryExitRequest = req.url.includes('/api/analytics/entry-exit');
   
   if (!isAnalyticsRequest && !isSitesRequest) {
+    return next(req);
+  }
+  
+  // Skip caching for entry-exit requests (time-sensitive data)
+  if (isEntryExitRequest) {
     return next(req);
   }
 

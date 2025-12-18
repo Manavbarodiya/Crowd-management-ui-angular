@@ -317,19 +317,22 @@ export class ApiService {
           console.error('❌ Entry-exit request failed:', errorInfo);
         }
         return of({ records: [], data: [], totalRecords: 0, total: 0 });
-      }),
-      shareReplay(1)
+      })
+      // Removed shareReplay - entry-exit data is time-sensitive and should not be cached
     );
   }
 
   getEntryExit(pageNumber = 1, pageSize = 50) {
+    // Entry-exit data is time-sensitive (last 30 minutes), so we can't cache by page number alone
+    // Each request gets fresh data to ensure accuracy
+    // Clear any existing cache for this page to ensure fresh data
     const cacheKey = `${pageNumber}-${pageSize}`;
-    
-    if (!this.entryExitCache.has(cacheKey)) {
-      this.entryExitCache.set(cacheKey, this.createEntryExitCache(pageNumber, pageSize));
+    if (this.entryExitCache.has(cacheKey)) {
+      this.entryExitCache.delete(cacheKey);
     }
     
-    return this.entryExitCache.get(cacheKey)!;
+    // Create new request (bypass cache for time-sensitive data)
+    return this.createEntryExitCache(pageNumber, pageSize);
   }
 
   getOccupancy(fromUtc?: number, toUtc?: number) {

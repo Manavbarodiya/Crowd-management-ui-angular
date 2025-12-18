@@ -8,12 +8,7 @@ export class SiteService {
   siteChange$ = this.siteChangeSubject.asObservable();
 
   notifySiteChange(siteId: string, previousSiteId?: string): void {
-    // Clear cache for both old and new sites to ensure fresh data
-    if (previousSiteId) {
-      clearCacheForSite(previousSiteId);
-    }
-    clearCacheForSite(siteId);
-    // Also clear all cache to be safe
+    // Clear all cache to ensure fresh data (clearing by siteId is redundant since we clear all)
     clearCacheForSite();
     // Emit the change event
     this.siteChangeSubject.next(siteId);

@@ -38,7 +38,6 @@ export class SocketService implements OnDestroy {
     }
     // Remove trailing slash if present
     socketUrl = socketUrl.replace(/\/$/, '');
-    console.log('🔌 Socket.io connecting to:', socketUrl);
     this.socket = io(socketUrl, {
       transports: ['websocket', 'polling'], // Try websocket first for better performance
       upgrade: true,
@@ -60,7 +59,6 @@ export class SocketService implements OnDestroy {
     });
 
     this.socket.on('connect', () => {
-      console.log('✅ Socket.io connected');
       this.isInitializing = false;
     });
 

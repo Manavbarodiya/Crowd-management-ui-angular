@@ -41,8 +41,11 @@ export class EntriesComponent implements OnInit, OnDestroy {
       // Immediately show loading state
       this.loading = true;
       this.currentPage = 1; // Reset to first page when site changes
+      this.pageNumbers = []; // Reset page numbers
+      this._pageNumbersCacheKey = undefined; // Reset cache
       this.cdr.markForCheck();
-      // Reload entries (cache is already cleared by SiteService)
+      // Clear API caches and reload entries
+      this.api.clearCaches();
       this.loadEntries();
     });
   }
@@ -68,7 +71,8 @@ export class EntriesComponent implements OnInit, OnDestroy {
     
     this.subscription = this.api.getEntryExit(this.currentPage, this.pageSize).subscribe({
       next: (res) => {
-        this.records = res.records || res.data || [];
+        // Create new array references to ensure change detection
+        this.records = (res.records || res.data || []).slice();
         this.totalRecords = res.totalRecords || res.total || this.records.length;
         this.totalPages = Math.ceil(this.totalRecords / this.pageSize);
         // Update page numbers
@@ -98,8 +102,10 @@ export class EntriesComponent implements OnInit, OnDestroy {
 
   goToPage(page: number | string): void {
     if (typeof page !== 'number' || page < 1 || page > this.totalPages) return;
-    if (page >= 1 && page <= this.totalPages) {
+    if (page >= 1 && page <= this.totalPages && page !== this.currentPage) {
       this.currentPage = page;
+      // Reset page numbers cache to force recalculation
+      this._pageNumbersCacheKey = undefined;
       this.updatePageNumbers();
       this.loadEntries();
     }
@@ -108,6 +114,8 @@ export class EntriesComponent implements OnInit, OnDestroy {
   previousPage(): void {
     if (this.currentPage > 1) {
       this.currentPage--;
+      // Reset page numbers cache to force recalculation
+      this._pageNumbersCacheKey = undefined;
       this.updatePageNumbers();
       this.loadEntries();
     }
@@ -116,6 +124,8 @@ export class EntriesComponent implements OnInit, OnDestroy {
   nextPage(): void {
     if (this.currentPage < this.totalPages) {
       this.currentPage++;
+      // Reset page numbers cache to force recalculation
+      this._pageNumbersCacheKey = undefined;
       this.updatePageNumbers();
       this.loadEntries();
     }

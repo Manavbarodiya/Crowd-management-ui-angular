@@ -20,7 +20,6 @@ console.warn = function(...args: any[]) {
 };
 
 // Global error handler to catch all unhandled errors
-const originalError = console.error;
 window.addEventListener('error', (event) => {
   console.error('🚨 Global Error Handler - Unhandled Error:', {
     message: event.message,

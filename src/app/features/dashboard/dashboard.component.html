@@ -1,4 +1,10 @@
-<div class="dashboard">
+<div class="dashboard" [class.loading-overlay-active]="loading">
+  <!-- Overall Loading Overlay -->
+  <div *ngIf="loading" class="loading-overlay">
+    <mat-spinner diameter="50"></mat-spinner>
+    <p class="loading-text">Loading dashboard...</p>
+  </div>
+
   <div class="section-header">
     <h2>Overview</h2>
     <div class="date-picker-container">
@@ -25,9 +31,8 @@
   <div class="stats-grid">
     <div class="card">
       <div class="stat-title">Live Occupancy</div>
-      <div class="stat-value" *ngIf="!loading">{{ liveOccupancy }}</div>
-      <div *ngIf="loading" class="skeleton"></div>
-      <div *ngIf="!loading" class="stat-trend">
+      <div class="stat-value" [class.loading-state]="loadingFootfall">{{ liveOccupancy }}</div>
+      <div class="stat-trend">
         <span class="live-indicator">
           <span class="live-dot"></span>
           <span>Live</span>
@@ -37,24 +42,28 @@
 
     <div class="card">
       <div class="stat-title">Today's Footfall</div>
-      <div class="stat-value" *ngIf="!loading">{{ todaysFootfall.toLocaleString() }}</div>
-      <div *ngIf="loading" class="skeleton"></div>
-      <div *ngIf="!loading && previousFootfall > 0" class="stat-trend" [class.trend-up]="getFootfallChange().isPositive" [class.trend-down]="!getFootfallChange().isPositive">
-        <ng-container *ngIf="getFootfallChange() as footfallChange">
-          <span class="trend-wavy">{{ footfallChange.isPositive ? '↗' : '↘' }}</span>
-          <span>{{ footfallChange.value.toFixed(0) }}% {{ footfallChange.isPositive ? 'More' : 'Less' }} than yesterday</span>
+      <div class="stat-value" [class.loading-state]="loadingFootfall">
+        <span *ngIf="!loadingFootfall">{{ todaysFootfall.toLocaleString() }}</span>
+        <mat-spinner *ngIf="loadingFootfall" diameter="24" class="inline-spinner"></mat-spinner>
+      </div>
+      <div *ngIf="previousFootfall > 0 && !loadingFootfall" class="stat-trend" [class.trend-up]="footfallChange.isPositive" [class.trend-down]="!footfallChange.isPositive">
+        <ng-container *ngIf="footfallChange as fc">
+          <span class="trend-wavy">{{ fc.isPositive ? '↗' : '↘' }}</span>
+          <span>{{ fc.value.toFixed(0) }}% {{ fc.isPositive ? 'More' : 'Less' }} than yesterday</span>
         </ng-container>
       </div>
     </div>
 
     <div class="card">
       <div class="stat-title">Avg Dwell Time</div>
-      <div class="stat-value" *ngIf="!loading">{{ Math.floor(avgDwellTime) }}min {{ Math.round((avgDwellTime % 1) * 60) }}sec</div>
-      <div *ngIf="loading" class="skeleton"></div>
-      <div *ngIf="!loading && previousDwellTime > 0" class="stat-trend" [class.trend-up]="getDwellTimeChange().isPositive" [class.trend-down]="!getDwellTimeChange().isPositive">
-        <ng-container *ngIf="getDwellTimeChange() as dwellTimeChange">
-          <span class="trend-wavy">{{ dwellTimeChange.isPositive ? '↗' : '↘' }}</span>
-          <span>{{ dwellTimeChange.value.toFixed(0) }}% {{ dwellTimeChange.isPositive ? 'More' : 'Less' }} than yesterday</span>
+      <div class="stat-value" [class.loading-state]="loadingDwell">
+        <span *ngIf="!loadingDwell">{{ Math.floor(avgDwellTime) }}min {{ Math.round((avgDwellTime % 1) * 60) }}sec</span>
+        <mat-spinner *ngIf="loadingDwell" diameter="24" class="inline-spinner"></mat-spinner>
+      </div>
+      <div *ngIf="previousDwellTime > 0 && !loadingDwell" class="stat-trend" [class.trend-up]="dwellTimeChange.isPositive" [class.trend-down]="!dwellTimeChange.isPositive">
+        <ng-container *ngIf="dwellTimeChange as dtc">
+          <span class="trend-wavy">{{ dtc.isPositive ? '↗' : '↘' }}</span>
+          <span>{{ dtc.value.toFixed(0) }}% {{ dtc.isPositive ? 'More' : 'Less' }} than yesterday</span>
         </ng-container>
       </div>
     </div>
@@ -65,9 +74,13 @@
       <div class="stat-title">Overall Occupancy</div>
     </div>
     <div class="chart-container-wrapper">
+      <div *ngIf="loadingOccupancy" class="chart-loading">
+        <mat-spinner diameter="40"></mat-spinner>
+        <p class="chart-loading-text">Loading occupancy data...</p>
+      </div>
       <ngx-charts-area-chart
-      *ngIf="occupancyChartData.length > 0 && !loadingOccupancy"
-      [view]="chartOptions.view"
+      *ngIf="occupancyChartData.length > 0 && occupancyChartData[0]?.series?.length >= 1 && !loadingOccupancy"
+      [view]="chartOptions.view || [800, 300]"
       [scheme]="'vivid'"
       [results]="occupancyChartData"
       [gradient]="true"
@@ -83,14 +96,7 @@
       [timeline]="chartOptions.timeline"
       [animations]="chartOptions.animations">
       </ngx-charts-area-chart>
-      <div class="live-marker" *ngIf="occupancyChartData.length > 0 && !loadingOccupancy">
-        <div class="live-marker-badge">
-          <mat-icon class="live-icon">fiber_manual_record</mat-icon>
-          <span>LIVE</span>
-        </div>
-      </div>
       <div *ngIf="occupancyChartData.length === 0 && !loadingOccupancy" class="no-data">No occupancy data available</div>
-      <div *ngIf="loadingOccupancy" class="skeleton-chart"></div>
     </div>
   </div>
 
@@ -99,6 +105,9 @@
     <div class="card">
       <div class="stat-title">Chart of Demographics</div>
       <div class="donut-container">
+        <div *ngIf="loadingDemographics" class="chart-loading chart-loading-center">
+          <mat-spinner diameter="40"></mat-spinner>
+        </div>
         <ngx-charts-pie-chart
           *ngIf="demographicsAnalysisChartData.length > 0 && !loadingDemographics"
           [view]="pieChartOptions.view"
@@ -114,7 +123,6 @@
           <div class="donut-center-label">Total Crowd</div>
         </div>
         <div *ngIf="demographicsAnalysisChartData.length === 0 && !loadingDemographics" class="no-data-small">No data</div>
-        <div *ngIf="loadingDemographics" class="skeleton-donut"></div>
       </div>
       <div class="demographics-legend" *ngIf="!loadingDemographics && demographicsAnalysisChartData.length > 0">
         <div class="legend-item">
@@ -128,11 +136,16 @@
       </div>
     </div>
 
-    <div class="card">
+    <div class="card demographics-analysis-card">
       <div class="stat-title">Demographics Analysis</div>
-      <ngx-charts-area-chart
-        *ngIf="demographicsChartData.length > 0 && !loadingDemographics"
-        [view]="demographicsChartOptions.view"
+      <div class="chart-container-wrapper">
+        <div *ngIf="loadingDemographics" class="chart-loading">
+          <mat-spinner diameter="40"></mat-spinner>
+          <p class="chart-loading-text">Loading demographics data...</p>
+        </div>
+        <ngx-charts-area-chart
+          *ngIf="demographicsChartData.length > 0 && demographicsChartData[0]?.series?.length >= 1 && !loadingDemographics"
+        [view]="demographicsChartOptions.view || [600, 300]"
         [scheme]="'vivid'"
         [results]="demographicsChartData"
         [gradient]="true"
@@ -145,11 +158,11 @@
         [xAxisLabel]="demographicsChartOptions.xAxisLabel"
         [yAxisLabel]="'Count'"
         [autoScale]="demographicsChartOptions.autoScale"
-        [timeline]="demographicsChartOptions.timeline"
-        [animations]="demographicsChartOptions.animations">
-      </ngx-charts-area-chart>
-      <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">No demographics data available</div>
-      <div *ngIf="loadingDemographics" class="skeleton-chart"></div>
+          [timeline]="demographicsChartOptions.timeline"
+          [animations]="demographicsChartOptions.animations">
+        </ngx-charts-area-chart>
+        <div *ngIf="demographicsChartData.length === 0 && !loadingDemographics" class="no-data">No demographics data available</div>
+      </div>
     </div>
   </div>
 </div>

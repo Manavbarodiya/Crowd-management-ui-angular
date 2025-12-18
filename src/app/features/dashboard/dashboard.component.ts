@@ -2,10 +2,11 @@ import { Component, OnInit, OnDestroy, ChangeDetectionStrategy, ChangeDetectorRe
 import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { MatDatepickerModule } from '@angular/material/datepicker';
-import { MatNativeDateModule, provideNativeDateAdapter } from '@angular/material/core';
+import { MatNativeDateModule } from '@angular/material/core';
 import { MatButtonModule } from '@angular/material/button';
 import { MatInputModule } from '@angular/material/input';
 import { MatFormFieldModule } from '@angular/material/form-field';
+import { MatProgressSpinnerModule } from '@angular/material/progress-spinner';
 import { ApiService } from '../../core/services/api.service';
 import { SocketService } from '../../core/services/socket.service';
 import { SiteService } from '../../core/services/site.service';
@@ -18,7 +19,7 @@ import { curveCardinal } from 'd3-shape';
 @Component({
   standalone: true,
   selector: 'app-dashboard',
-  imports: [CommonModule, NgxChartsModule, MatIconModule, MatDatepickerModule, MatNativeDateModule, MatButtonModule, MatInputModule, MatFormFieldModule],
+  imports: [CommonModule, NgxChartsModule, MatIconModule, MatDatepickerModule, MatNativeDateModule, MatButtonModule, MatInputModule, MatFormFieldModule, MatProgressSpinnerModule],
   templateUrl: './dashboard.component.html',
   styleUrls: ['./dashboard.component.scss'],
   changeDetection: ChangeDetectionStrategy.OnPush
@@ -48,7 +49,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     xAxisLabel: 'Time',
     timeline: false, // Disable timeline for better performance
     autoScale: true,
-    view: [1200, 300] as [number, number], // Stretched width for Overall Occupancy
+    view: [800, 300] as [number, number], // Default view size - will be responsive
     animations: false // Explicitly disable animations
   };
   demographicsChartOptions = {
@@ -61,7 +62,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
     xAxisLabel: 'Time',
     timeline: false,
     autoScale: true,
-    view: [600, 300] as [number, number], // Reduced width to fit container and prevent cutoff
+    view: [600, 300] as [number, number], // Default view size
     animations: false
   };
   pieChartOptions = {
@@ -73,11 +74,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
   curve = curveCardinal.tension(0.5); // Smooth wavy curves
 
   selectedDate: Date = new Date();
-  datePickerOpen = false;
 
   private socketSubscriptions: Subscription[] = [];
   private httpSubscriptions: Subscription[] = [];
+  private siteChangeSubscription?: Subscription;
   private footfallRefreshPending = false;
+  
+  // Cached computed values for template performance
+  private _dateDisplayText?: string;
+  private _footfallChange?: { value: number; isPositive: boolean };
+  private _dwellTimeChange?: { value: number; isPositive: boolean };
 
   constructor(
     private api: ApiService, 
@@ -92,34 +98,25 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // Initialize notification service with today's date
     this.notificationService.setSelectedDate(this.selectedDate);
     
-    // Always wait for SiteService notification to ensure siteId is validated
-    // This prevents loading with invalid/stale siteId from previous session
-    let hasLoadedInitialData = false;
-    
-    const initialSiteSub = this.siteService.siteChange$.subscribe(() => {
-      // Only load once on initial site change (after login/sites loaded)
-      if (!hasLoadedInitialData) {
-        hasLoadedInitialData = true;
-        this.loadDashboardData();
-        // Unsubscribe after first load to avoid duplicate loads
-        initialSiteSub.unsubscribe();
-      }
+    // Set up site change listener (separate from HTTP subscriptions to prevent accidental unsubscription)
+    this.siteChangeSubscription = this.siteService.siteChange$.subscribe(() => {
+      // Clear caches and reload data when site changes
+      this.api.clearCaches();
+      // Invalidate cached computed values
+      this._footfallChange = undefined;
+      this._dwellTimeChange = undefined;
+      this._dateDisplayText = undefined;
+      this.loadDashboardData();
     });
-    this.httpSubscriptions.push(initialSiteSub);
+    
+    // Load data immediately if site already exists (for navigation back to dashboard)
+    // Otherwise wait for siteChange$ to emit (initial load after login)
+    if (this.auth.getSiteId()) {
+      this.loadDashboardData();
+    }
+    // If no site exists, we wait for siteChange$ to emit (handled by layout component)
     
     this.setupSocketListeners();
-    
-    // Listen for subsequent site changes and reload data
-    const siteChangeSub = this.siteService.siteChange$.subscribe(() => {
-      // Skip if this is the initial load (handled above)
-      if (hasLoadedInitialData) {
-        // Clear API service caches for fresh data
-        this.api.clearCaches();
-        // Reload data (cache is already cleared by SiteService)
-        this.loadDashboardData();
-      }
-    });
-    this.httpSubscriptions.push(siteChangeSub);
   }
 
   ngOnDestroy(): void {
@@ -127,6 +124,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
     this.socketSubscriptions = [];
     this.httpSubscriptions.forEach(sub => sub.unsubscribe());
     this.httpSubscriptions = [];
+    if (this.siteChangeSubscription) {
+      this.siteChangeSubscription.unsubscribe();
+    }
   }
 
   private loadDashboardData(): void {
@@ -138,14 +138,12 @@ export class DashboardComponent implements OnInit, OnDestroy {
     });
     this.httpSubscriptions = [];
     
-    // OPTIMIZATION: Don't reset data immediately - keep existing data visible while loading
-    // This provides instant perceived performance (progressive loading)
-    // Only set loading flags for individual sections
+    // Set loading flags for individual sections
+    // Don't reset chart data here - let it update when new data arrives to avoid flicker
     this.loadingFootfall = true;
     this.loadingDwell = true;
     this.loadingOccupancy = true;
     this.loadingDemographics = true;
-    // Keep main loading false initially - will be set to true only if no cached data exists
     this.loading = false;
     this.cdr.markForCheck();
     
@@ -184,16 +182,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
       }
     }
     
-    // Log for debugging
-    console.log('📅 API date range (UTC):', {
-      selectedDate: `${selectedYear}-${String(selectedMonth + 1).padStart(2, '0')}-${String(selectedDay).padStart(2, '0')}`,
-      isToday,
-      fromUtc: fromUtc,
-      toUtc: toUtc,
-      fromUtcISO: new Date(fromUtc).toISOString(),
-      toUtcISO: new Date(toUtc).toISOString(),
-      durationHours: ((toUtc - fromUtc) / (60 * 60 * 1000)).toFixed(2)
-    });
     
     // PHASE 1: High Priority - Summary Cards (Footfall & Dwell)
     // These APIs power summary cards and must load first
@@ -244,6 +232,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
           this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
           this.previousFootfall = phase1Results.footfall?.previousFootfall ?? phase1Results.footfall?.previousCount ?? phase1Results.footfall?.yesterdaysFootfall ?? 0;
           this._footfallChange = undefined; // Invalidate cache
+          this._dateDisplayText = undefined; // Invalidate date display cache
         }
         this.loadingFootfall = false;
         
@@ -332,7 +321,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
               this.liveOccupancy = 0;
             }
             this.loadingOccupancy = false;
-            console.log('✅ Occupancy loading complete. Chart data length:', this.occupancyChartData.length, 'Live occupancy:', this.liveOccupancy);
             
             // Process demographics
             if (phase2Results.demographics) {
@@ -343,7 +331,6 @@ export class DashboardComponent implements OnInit, OnDestroy {
               this.demographicsAnalysisChartData = [];
             }
             this.loadingDemographics = false;
-            console.log('✅ Demographics loading complete. Chart data length:', this.demographicsChartData.length, 'Analysis data length:', this.demographicsAnalysisChartData.length);
             
             // Phase 2 complete
             this.checkAllLoaded();
@@ -361,6 +348,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
               timestamp: new Date().toISOString()
             };
             console.error('❌ Dashboard: Error loading Phase 2 data (charts):', errorInfo);
+            // Reset chart data on error
+            this.occupancyChartData = [];
+            this.demographicsChartData = [];
+            this.demographicsAnalysisChartData = [];
             this.loadingOccupancy = false;
             this.loadingDemographics = false;
             this.checkAllLoaded();
@@ -412,6 +403,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
             this.cdr.markForCheck();
           },
           error: () => {
+            // Reset chart data on error
+            this.occupancyChartData = [];
+            this.demographicsChartData = [];
+            this.demographicsAnalysisChartData = [];
             this.loadingOccupancy = false;
             this.loadingDemographics = false;
             this.checkAllLoaded();
@@ -434,8 +429,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private processOccupancyData(data: any): void {
+    
     const processSeries = (items: any[]) => {
       if (!items || items.length === 0) {
+        console.warn('⚠️ processSeries: No items provided');
         return [];
       }
       
@@ -486,11 +483,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     
     // Only set chart data if series has data points
+    // Create completely new object references for change detection
     if (series.length > 0) {
-      this.occupancyChartData = [{ name: 'Occupancy', series }];
-      console.log('✅ Occupancy chart data loaded:', this.occupancyChartData.length, 'series with', series.length, 'points');
-    } else {
+      // Create a completely new array with new object references
+      let newSeries = series.map(point => ({
+        name: String(point.name || ''),
+        value: Number(point.value || 0)
+      }));
+      
+      // Area charts need at least 2 points to render properly
+      // If we only have 1 point, duplicate it to create a valid chart
+      if (newSeries.length === 1) {
+        const singlePoint = newSeries[0];
+        // Create a duplicate point slightly before (for time-based charts, subtract a small time unit)
+        const duplicatePoint = {
+          name: singlePoint.name, // Keep same time for single-point data
+          value: singlePoint.value
+        };
+        newSeries = [duplicatePoint, ...newSeries];
+      }
+      
+      // Force new array reference for change detection
       this.occupancyChartData = [];
+      this.occupancyChartData = [{
+        name: 'Occupancy',
+        series: newSeries
+      }];
+    } else {
+      // Only set to empty if it wasn't already empty to avoid unnecessary changes
+      if (this.occupancyChartData.length > 0) {
+        this.occupancyChartData = [];
+      }
       console.warn('⚠️ Occupancy data processed but no valid series found. Data structure:', data);
     }
     this.cdr.markForCheck();
@@ -562,9 +585,33 @@ export class DashboardComponent implements OnInit, OnDestroy {
     }
     
     // Only set chart data if it has valid series
+    // Create completely new object references for change detection
     if (chartData.length > 0 && chartData[0]?.series?.length > 0) {
-      this.demographicsChartData = chartData;
-      console.log('✅ Demographics chart data loaded:', this.demographicsChartData.length, 'series');
+      const newChartData = chartData.map(item => {
+        let newSeries = item.series.map((point: any) => ({
+          name: String(point.name || ''),
+          value: Number(point.value || 0)
+        }));
+        
+        // Area charts need at least 2 points to render properly
+        // If we only have 1 point, duplicate it to create a valid chart
+        if (newSeries.length === 1) {
+          const singlePoint = newSeries[0];
+          const duplicatePoint = {
+            name: singlePoint.name,
+            value: singlePoint.value
+          };
+          newSeries = [duplicatePoint, ...newSeries];
+        }
+        
+        return {
+          name: String(item.name || ''),
+          series: newSeries
+        };
+      });
+      // Force new array reference for change detection
+      this.demographicsChartData = [];
+      this.demographicsChartData = newChartData;
     } else {
       this.demographicsChartData = [];
       console.warn('⚠️ Demographics data processed but no valid series found. Data structure:', data);
@@ -596,11 +643,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
       if (!isNaN(femaleValue)) totalFemale += femaleValue;
     });
 
-    // Create pie chart data
-    this.demographicsAnalysisChartData = [
+    // Create pie chart data - always create new array reference for change detection
+    const newAnalysisData = [
       { name: 'Male', value: Math.round(totalMale) },
       { name: 'Female', value: Math.round(totalFemale) }
-    ];
+    ].map(item => ({
+      name: String(item.name || ''),
+      value: Number(item.value || 0)
+    })); // Create new object references with explicit types
+    // Force new array reference for change detection
+    this.demographicsAnalysisChartData = [];
+    this.demographicsAnalysisChartData = newAnalysisData;
     // Invalidate memoized percentages
     this._malePercentage = undefined;
     this._femalePercentage = undefined;
@@ -818,8 +871,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
               const footfallValue = res.footfall ?? res.count ?? res.todaysFootfall ?? res.totalFootfall ?? 0;
               this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
               this.previousFootfall = res.previousFootfall ?? res.previousCount ?? res.yesterdaysFootfall ?? 0;
-              // Invalidate cached computed value
+              // Invalidate cached computed values
               this._footfallChange = undefined;
+              this._dateDisplayText = undefined;
               this.footfallRefreshPending = false;
               this.cdr.markForCheck();
             },
@@ -844,16 +898,14 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
 
-  // Memoized computed values to avoid recalculating on every change detection
-  private _footfallChange?: { value: number; isPositive: boolean };
-  private _dwellTimeChange?: { value: number; isPositive: boolean };
-
-  getFootfallChange(): { value: number; isPositive: boolean } {
-    // Recalculate only if values changed
-    if (this._footfallChange === undefined || 
-        this._footfallChange.value !== this.calculateFootfallChange().value) {
-      this._footfallChange = this.calculateFootfallChange();
+  // Computed properties cached for template performance - recalculated when underlying values change
+  get footfallChange(): { value: number; isPositive: boolean } {
+    // Return cached value if available (will be invalidated when todaysFootfall or previousFootfall change)
+    if (this._footfallChange !== undefined) {
+      return this._footfallChange;
     }
+    // Calculate and cache
+    this._footfallChange = this.calculateFootfallChange();
     return this._footfallChange;
   }
 
@@ -863,12 +915,13 @@ export class DashboardComponent implements OnInit, OnDestroy {
     return { value: Math.abs(change), isPositive: change >= 0 };
   }
 
-  getDwellTimeChange(): { value: number; isPositive: boolean } {
-    // Recalculate only if values changed
-    if (this._dwellTimeChange === undefined || 
-        this._dwellTimeChange.value !== this.calculateDwellTimeChange().value) {
-      this._dwellTimeChange = this.calculateDwellTimeChange();
+  get dwellTimeChange(): { value: number; isPositive: boolean } {
+    // Return cached value if available (will be invalidated when avgDwellTime or previousDwellTime change)
+    if (this._dwellTimeChange !== undefined) {
+      return this._dwellTimeChange;
     }
+    // Calculate and cache
+    this._dwellTimeChange = this.calculateDwellTimeChange();
     return this._dwellTimeChange;
   }
 
@@ -877,8 +930,17 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const change = ((this.avgDwellTime - this.previousDwellTime) / this.previousDwellTime) * 100;
     return { value: Math.abs(change), isPositive: change >= 0 };
   }
+  
+  // Backwards compatibility getters (delegate to properties)
+  getFootfallChange(): { value: number; isPositive: boolean } {
+    return this.footfallChange;
+  }
+  
+  getDwellTimeChange(): { value: number; isPositive: boolean } {
+    return this.dwellTimeChange;
+  }
 
-  Math = Math;
+  Math = Math; // Exposed for template use
 
   // Memoized percentages to avoid recalculating on every change detection
   private _malePercentage?: number;
@@ -929,6 +991,10 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this.selectedDate = date;
       // Reset live occupancy when date changes - will be set correctly in loadDashboardData
       this.liveOccupancy = 0;
+      // Invalidate cached computed values
+      this._dateDisplayText = undefined;
+      this._footfallChange = undefined;
+      this._dwellTimeChange = undefined;
       // Update notification service with selected date
       this.notificationService.setSelectedDate(date);
       this.loadDashboardData();
@@ -945,21 +1011,29 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   getDateDisplayText(): string {
+    // Use cached value if available and date hasn't changed
+    if (this._dateDisplayText !== undefined) {
+      return this._dateDisplayText;
+    }
+    
     const today = new Date();
     today.setHours(0, 0, 0, 0);
     const selected = new Date(this.selectedDate);
     selected.setHours(0, 0, 0, 0);
     
     if (selected.getTime() === today.getTime()) {
-      return 'Today';
+      this._dateDisplayText = 'Today';
+      return this._dateDisplayText;
     }
     
     const yesterday = new Date(today);
     yesterday.setDate(yesterday.getDate() - 1);
     if (selected.getTime() === yesterday.getTime()) {
-      return 'Yesterday';
+      this._dateDisplayText = 'Yesterday';
+      return this._dateDisplayText;
     }
     
-    return this.selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    this._dateDisplayText = this.selectedDate.toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' });
+    return this._dateDisplayText;
   }
 }
