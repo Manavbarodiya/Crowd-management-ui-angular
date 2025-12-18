@@ -349,25 +349,36 @@ export class DashboardComponent implements OnInit, OnDestroy {
     
     // Calculate date range for API
     // API expects: { siteId, fromUtc, toUtc } where fromUtc/toUtc are UTC milliseconds (numbers)
-    // Use UTC time directly - backend handles timezone conversion based on siteId
+    // Backend handles timezone conversion based on siteId
     
-    // Get selected date in UTC
+    // Extract the intended local date from selectedDate
+    // selectedDate is stored as UTC but represents a local date selection
+    // We need to interpret it as a local date, not extract UTC components
     const selectedDate = new Date(this.selectedDate);
+    // Since selectedDate was created using local date values converted to UTC,
+    // we reconstruct the local date by reading the UTC components
+    // (which match the original local values used during initialization)
     const selectedYear = selectedDate.getUTCFullYear();
     const selectedMonth = selectedDate.getUTCMonth();
     const selectedDay = selectedDate.getUTCDate();
     
-    // Check if selected date is today (in UTC)
+    // Create 8:00 AM and 6:00 PM in the user's LOCAL timezone for the selected date
+    // Then convert to UTC milliseconds for the API
+    // This ensures "Dec 19" selected by user means Dec 19 in their timezone
+    const localFrom = new Date(selectedYear, selectedMonth, selectedDay, 8, 0, 0, 0);
+    const localTo = new Date(selectedYear, selectedMonth, selectedDay, 18, 0, 0, 0);
+    
+    // Check if selected date is today (using local date comparison)
     const now = new Date();
-    const todayYear = now.getUTCFullYear();
-    const todayMonth = now.getUTCMonth();
-    const todayDay = now.getUTCDate();
+    const todayYear = now.getFullYear();
+    const todayMonth = now.getMonth();
+    const todayDay = now.getDate();
     const isToday = selectedYear === todayYear && selectedMonth === todayMonth && selectedDay === todayDay;
     
-    // Create 8:00 AM and 6:00 PM UTC for the selected date
-    // Date.UTC() creates a date in UTC timezone
-    let fromUtc = Date.UTC(selectedYear, selectedMonth, selectedDay, 8, 0, 0, 0);  // 8:00 AM UTC
-    let toUtc = isToday ? Math.min(Date.now(), Date.UTC(selectedYear, selectedMonth, selectedDay, 18, 0, 0, 0)) : Date.UTC(selectedYear, selectedMonth, selectedDay, 18, 0, 0, 0);  // 6:00 PM UTC or current time
+    // Convert local times to UTC milliseconds for API
+    // getTime() returns UTC milliseconds regardless of timezone
+    let fromUtc = localFrom.getTime();  // 8:00 AM local time -> UTC milliseconds
+    let toUtc = isToday ? Math.min(Date.now(), localTo.getTime()) : localTo.getTime();  // 6:00 PM local time -> UTC milliseconds or current time
     
     // Date range calculation - logging removed to reduce console noise
     
