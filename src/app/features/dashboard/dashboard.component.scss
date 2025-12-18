@@ -244,23 +244,32 @@
   ::ng-deep ngx-charts-line-chart,
   ::ng-deep ngx-charts-area-chart {
     width: 100% !important;
-    display: block;
-    overflow: visible;
+    max-width: 100% !important;
+    display: block !important;
+    overflow: hidden !important;
     position: relative;
     z-index: 1;
     
+    .ngx-charts {
+      width: 100% !important;
+      max-width: 100% !important;
+    }
+    
     svg {
       width: 100% !important;
-      max-width: 100%;
+      max-width: 100% !important;
       height: auto !important;
+      overflow: visible;
     }
     
     .chart {
       width: 100% !important;
+      max-width: 100% !important;
     }
     
     .chart-container {
       width: 100% !important;
+      max-width: 100% !important;
     }
   }
 }
@@ -360,11 +369,39 @@
     }
   }
   
-  // Ensure charts render above skeleton
+  // Ensure charts render above skeleton and are responsive
   ngx-charts-area-chart,
   ngx-charts-pie-chart {
     position: relative;
     z-index: 10; // Higher than skeleton (z-index: 1) to ensure charts are visible
+    width: 100% !important;
+    max-width: 100% !important;
+    display: block !important;
+    overflow: hidden !important;
+    
+    ::ng-deep {
+      .ngx-charts {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      
+      svg {
+        width: 100% !important;
+        max-width: 100% !important;
+        height: auto !important;
+        overflow: visible;
+      }
+      
+      .chart {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+      
+      .chart-container {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
+    }
   }
 }
 
@@ -401,7 +438,7 @@
   
   // Ensure charts don't overflow
   .card {
-    overflow-x: auto; // Allow horizontal scroll if needed
+    overflow-x: hidden; // Prevent horizontal overflow
     overflow-y: visible;
     min-width: 0; // Allow grid item to shrink below content size
     position: relative;
@@ -413,19 +450,25 @@
     }
     
     // Demographics Analysis chart container
-    ngx-charts-line-chart,
-    ngx-charts-area-chart {
+    ::ng-deep ngx-charts-line-chart,
+    ::ng-deep ngx-charts-area-chart {
       width: 100% !important;
       max-width: 100% !important;
-      display: block;
-      overflow: visible;
+      display: block !important;
+      overflow: hidden !important;
       position: relative;
       z-index: 10;
+      
+      .ngx-charts {
+        width: 100% !important;
+        max-width: 100% !important;
+      }
       
       svg {
         width: 100% !important;
         max-width: 100% !important;
         height: auto !important;
+        overflow: visible;
       }
       
       .chart {
@@ -437,7 +480,6 @@
         width: 100% !important;
         max-width: 100% !important;
       }
-      
     }
   }
 }
@@ -448,10 +490,11 @@
   display: flex;
   justify-content: center;
   align-items: center;
-  overflow: visible;
+  overflow: hidden; // Prevent overflow
   margin-bottom: 8px;
   width: 100%;
   max-width: 100%;
+  box-sizing: border-box;
   
   .chart-loading {
     position: absolute;
@@ -461,10 +504,50 @@
     z-index: 5;
   }
   
-  // Ensure pie chart renders above loading
-  ngx-charts-pie-chart {
+  // Ensure pie chart renders above loading and is properly centered
+  ::ng-deep ngx-charts-pie-chart {
     position: relative;
     z-index: 10;
+    width: 100% !important;
+    max-width: 100% !important;
+    height: 100% !important;
+    display: flex !important;
+    justify-content: center !important;
+    align-items: center !important;
+    
+    .ngx-charts {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: 100% !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+    }
+    
+    svg {
+      width: 100% !important;
+      max-width: 100% !important;
+      height: auto !important;
+      max-height: 240px !important;
+      display: block !important;
+      margin: 0 auto !important;
+    }
+    
+    .chart {
+      width: 100% !important;
+      max-width: 100% !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+    }
+    
+    .chart-container {
+      width: 100% !important;
+      max-width: 100% !important;
+      display: flex !important;
+      justify-content: center !important;
+      align-items: center !important;
+    }
   }
 }
 
@@ -474,8 +557,10 @@
   left: 50%;
   transform: translate(-50%, -50%);
   text-align: center;
-  z-index: 10;
+  z-index: 15; // Above chart
   pointer-events: none;
+  width: auto;
+  min-width: 80px;
 }
 
 .donut-center-value {

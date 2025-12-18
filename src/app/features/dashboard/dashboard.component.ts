@@ -111,6 +111,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   private footfallRefreshTrigger$ = new Subject<void>();
   private footfallRefreshSubscription?: Subscription;
   
+  // Window resize handler reference for cleanup
+  private resizeHandler = () => this.updateChartViewDimensions();
+  
   // Cached computed values for template performance
   private _footfallChange?: { value: number; isPositive: boolean };
   private _dwellTimeChange?: { value: number; isPositive: boolean };
@@ -127,6 +130,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnInit(): void {
     // Initialize notification service with today's date
     this.notificationService.setSelectedDate(this.selectedDate);
+    
+    // Calculate responsive chart view dimensions
+    this.updateChartViewDimensions();
     
     // Set up site change listener (separate from HTTP subscriptions to prevent accidental unsubscription)
     this.siteChangeSubscription = this.siteService.siteChange$.subscribe(() => {
@@ -148,6 +154,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     
     this.setupSocketListeners();
     this.setupFootfallRefresh();
+    
+    // Update chart dimensions on window resize
+    if (typeof window !== 'undefined') {
+      window.addEventListener('resize', this.resizeHandler);
+    }
   }
   
   /**
@@ -197,6 +208,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
   ngOnDestroy(): void {
     this.socketSubscriptions.forEach(sub => sub.unsubscribe());
     this.socketSubscriptions = [];
+    
+    // Remove window resize listener
+    if (typeof window !== 'undefined') {
+      window.removeEventListener('resize', this.resizeHandler);
+    }
     this.httpSubscriptions.forEach(sub => sub.unsubscribe());
     this.httpSubscriptions = [];
     if (this.siteChangeSubscription) {
@@ -808,6 +824,31 @@ export class DashboardComponent implements OnInit, OnDestroy {
     const selected = new Date(this.selectedDate);
     selected.setHours(0, 0, 0, 0);
     return selected.getTime() === today.getTime();
+  }
+
+  private updateChartViewDimensions(): void {
+    if (typeof window === 'undefined') return;
+    
+    // Calculate responsive dimensions based on container width
+    // Account for padding (24px * 2 = 48px) and gap (20px)
+    const containerWidth = window.innerWidth - 60; // Account for dashboard padding (30px * 2)
+    const chartSectionWidth = containerWidth - 48; // Account for chart-section padding
+    
+    // Overall Occupancy chart: full width minus padding
+    this.chartOptions.view = [Math.max(600, chartSectionWidth), 300] as [number, number];
+    
+    // Demographics Analysis chart: 2/3 of grid width (2fr out of 1fr + 2fr = 3fr total)
+    // Account for card padding (24px * 2 = 48px) and gap (20px)
+    const demographicsGridWidth = containerWidth - 20; // Account for grid gap
+    const demographicsCardWidth = (demographicsGridWidth * 2 / 3) - 48; // 2fr out of 3fr, minus card padding
+    this.demographicsChartOptions.view = [Math.max(400, demographicsCardWidth), 300] as [number, number];
+    
+    // Pie chart: 1/3 of grid width, maintain square aspect ratio
+    const pieCardWidth = (demographicsGridWidth * 1 / 3) - 48; // 1fr out of 3fr, minus card padding
+    const pieSize = Math.min(Math.max(280, pieCardWidth), 240); // Square chart, max 240px to fit container height
+    this.pieChartOptions.view = [pieSize, pieSize] as [number, number];
+    
+    this.cdr.markForCheck();
   }
 
   private updateDateDisplayText(): void {
