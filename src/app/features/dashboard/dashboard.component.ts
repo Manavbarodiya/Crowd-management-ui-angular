@@ -73,7 +73,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   curve = curveCardinal.tension(0.5); // Smooth wavy curves
 
-  selectedDate: Date = new Date();
+  selectedDate: Date = (() => {
+    // Normalize initial date to midnight UTC
+    const today = new Date();
+    return new Date(Date.UTC(
+      today.getUTCFullYear(),
+      today.getUTCMonth(),
+      today.getUTCDate(),
+      0, 0, 0, 0
+    ));
+  })();
   
   // Pre-computed display values (performance optimization)
   dateDisplayText = '';
@@ -159,13 +168,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
     ).subscribe({
       next: (res) => {
         if (res) {
-          const footfallValue = res.footfall ?? res.count ?? res.todaysFootfall ?? res.totalFootfall ?? 0;
-          this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
-          this.previousFootfall = res.previousFootfall ?? res.previousCount ?? res.yesterdaysFootfall ?? 0;
-          // Pre-compute formatted display value
+          // Backend provides: { siteId, fromUtc, toUtc, footfall }
+          this.todaysFootfall = res.footfall ?? 0;
+          this.previousFootfall = 0; // Backend doesn't provide previousFootfall
           this.footfallDisplayValue = this.todaysFootfall.toLocaleString();
-          // Invalidate cached computed values
-          this._footfallChange = undefined;
+          this._footfallChange = undefined; // Backend doesn't provide footfallChange
           this.updateDateDisplayText();
           this.cdr.markForCheck();
         }
@@ -232,6 +239,16 @@ export class DashboardComponent implements OnInit, OnDestroy {
     let fromUtc = Date.UTC(selectedYear, selectedMonth, selectedDay, 8, 0, 0, 0);  // 8:00 AM UTC
     let toUtc = isToday ? Math.min(Date.now(), Date.UTC(selectedYear, selectedMonth, selectedDay, 18, 0, 0, 0)) : Date.UTC(selectedYear, selectedMonth, selectedDay, 18, 0, 0, 0);  // 6:00 PM UTC or current time
     
+    // Debug: Log the date range being sent to API
+    console.log('📊 Fetching data for date range:', {
+      selectedDate: new Date(this.selectedDate).toISOString(),
+      fromUtc: new Date(fromUtc).toISOString(),
+      toUtc: new Date(toUtc).toISOString(),
+      fromUtcMs: fromUtc,
+      toUtcMs: toUtc,
+      isToday
+    });
+    
     // Ensure valid time range
     if (fromUtc >= toUtc) {
       // If invalid, adjust to valid range
@@ -251,36 +268,40 @@ export class DashboardComponent implements OnInit, OnDestroy {
     // These APIs power summary cards and must load first
     const phase1Sub = this.api.getSummaryCardsBatch(fromUtc, toUtc).subscribe({
       next: (phase1Results) => {
-        // Process footfall
+        // Process footfall - Use backend data directly
+        // Backend provides: { siteId, fromUtc, toUtc, footfall }
         if (phase1Results.footfall) {
-          const footfallValue = phase1Results.footfall?.footfall ?? phase1Results.footfall?.count ?? phase1Results.footfall?.todaysFootfall ?? phase1Results.footfall?.totalFootfall ?? 0;
-          this.todaysFootfall = typeof footfallValue === 'number' ? Math.round(footfallValue) : parseInt(footfallValue) || 0;
-          this.previousFootfall = phase1Results.footfall?.previousFootfall ?? phase1Results.footfall?.previousCount ?? phase1Results.footfall?.yesterdaysFootfall ?? 0;
-          // Pre-compute formatted display value
+          // Footfall data processed - API provides: { siteId, fromUtc, toUtc, footfall }
+          this.todaysFootfall = phase1Results.footfall.footfall ?? 0;
+          this.previousFootfall = 0; // Backend doesn't provide previousFootfall
           this.footfallDisplayValue = this.todaysFootfall.toLocaleString();
-          this._footfallChange = undefined; // Invalidate cache
-          this.updateDateDisplayText(); // Update date display
+          this._footfallChange = undefined; // Backend doesn't provide footfallChange
+          this.updateDateDisplayText();
         } else {
-          // Reset on error/null
           this.todaysFootfall = 0;
           this.footfallDisplayValue = '0';
+          this.previousFootfall = 0;
+          this._footfallChange = undefined;
         }
         this.loadingFootfall = false;
         
-        // Process dwell
+        // Process dwell - Use backend data directly (API: { siteId, fromUtc, toUtc, avgDwellMinutes, dwellRecords })
         if (phase1Results.dwell) {
-          const dwellValue = phase1Results.dwell?.avgDwellMinutes ?? phase1Results.dwell?.avgDwellTime ?? phase1Results.dwell?.averageDwellTime ?? phase1Results.dwell?.dwellMinutes ?? 0;
-          this.avgDwellTime = typeof dwellValue === 'number' ? Math.round(dwellValue * 10) / 10 : parseFloat(dwellValue) || 0;
-          // Pre-compute formatted display value
+          // API always provides 'avgDwellMinutes' field
+          this.avgDwellTime = phase1Results.dwell.avgDwellMinutes ?? 0;
+          this.previousDwellTime = 0; // Backend doesn't provide previousDwellTime
+          
+          // Format display value: "23min 8sec" format
           const minutes = Math.floor(this.avgDwellTime);
           const seconds = Math.round((this.avgDwellTime % 1) * 60);
           this.dwellTimeDisplayValue = `${minutes}min ${seconds}sec`;
-          this.previousDwellTime = phase1Results.dwell?.previousAvgDwellMinutes ?? phase1Results.dwell?.previousAvgDwellTime ?? phase1Results.dwell?.previousAverageDwellTime ?? 0;
-          this._dwellTimeChange = undefined; // Invalidate cache
+          
+          this._dwellTimeChange = undefined; // Backend doesn't provide dwellTimeChange
         } else {
-          // Reset on error/null
           this.avgDwellTime = 0;
           this.dwellTimeDisplayValue = '0min 0sec';
+          this.previousDwellTime = 0;
+          this._dwellTimeChange = undefined;
         }
         this.loadingDwell = false;
         
@@ -297,20 +318,11 @@ export class DashboardComponent implements OnInit, OnDestroy {
             // Process occupancy from batch results
             if (batchResults.occupancy) {
               this.processOccupancyData(batchResults.occupancy);
-              // Set initial live occupancy from the most recent bucket only if selected date is today
-              if (this.isSelectedDateToday()) {
-                if (batchResults.occupancy.buckets && Array.isArray(batchResults.occupancy.buckets) && batchResults.occupancy.buckets.length > 0) {
-                  const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
-                  const latestOccupancy = Number(latestBucket.avg || latestBucket.occupancy || latestBucket.value || 0);
-                  if (latestOccupancy > 0) {
-                    this.liveOccupancy = Math.round(latestOccupancy);
-                  }
-                } else {
-                  // Empty buckets array - no live data
-                  this.liveOccupancy = 0;
-                }
+              // Backend doesn't provide liveOccupancy - use latest bucket for today
+              if (this.isSelectedDateToday() && batchResults.occupancy.buckets?.length > 0) {
+                const latestBucket = batchResults.occupancy.buckets[batchResults.occupancy.buckets.length - 1];
+                this.liveOccupancy = Number(latestBucket.avg) || 0;
               } else {
-                // For past or future dates, live occupancy should be 0
                 this.liveOccupancy = 0;
               }
             } else {
@@ -433,280 +445,120 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private processOccupancyData(data: any): void {
+    // Occupancy data processed - API provides: { siteId, fromUtc, toUtc, timezone, buckets: [{ utc, local, avg }] }
     
-    const processSeries = (items: any[]) => {
-      if (!items || items.length === 0) {
-        console.warn('⚠️ processSeries: No items provided');
-        return [];
-      }
-      
-      // Data sampling: Take every Nth item to reduce data points for faster rendering
-      // If more than 20 points, sample to keep max 20 points (ultra-optimized for 1-2 second load)
-      const maxPoints = 20;
-      const step = items.length > maxPoints ? Math.ceil(items.length / maxPoints) : 1;
-      const sampledItems = items.filter((_, index) => index % step === 0);
-      
-      // Pre-allocate array with exact size for better performance
-      const result: any[] = new Array(sampledItems.length);
-      let resultIndex = 0;
-      for (const item of sampledItems) {
-        // Handle different time field names: utc, local, timestamp, hour, time
-        let time = '';
-        if (item.local) {
-          // Extract time from local string (e.g., "15/12/2025 09:00:00" -> "09:00")
-          const localMatch = item.local.match(/(\d{2}:\d{2}):\d{2}/);
-          if (localMatch) {
-            time = localMatch[1];
-          } else {
-            time = this.formatTime(item.local);
-          }
-        } else {
-          time = this.formatTime(item.utc || item.timestamp || item.hour || item.time);
-        }
-        if (time) {
-          const value = Number(item.avg || item.occupancy || item.count || item.value || item.average || 0);
-          // Round occupancy to whole number (can't have fractional people)
-          result[resultIndex++] = { name: time, value: isNaN(value) ? 0 : Math.round(value) };
-        }
-      }
-      // Trim to actual size
-      result.length = resultIndex;
-      return result;
-    };
-
-    let series: any[] = [];
+    // Backend provides buckets array with: { utc, local, avg }
+    // local format: "18/12/2025 12:00:00" -> extract "12:00"
+    const buckets = data?.buckets || [];
     
-    if (Array.isArray(data)) {
-      series = processSeries(data);
-    } else if (data?.timeseries && Array.isArray(data.timeseries)) {
-      series = processSeries(data.timeseries);
-    } else if (data?.data && Array.isArray(data.data)) {
-      series = processSeries(data.data);
-    } else if (data?.buckets && Array.isArray(data.buckets)) {
-      series = processSeries(data.buckets);
+    if (buckets.length === 0) {
+      this.occupancyChartData = [];
+      this.cdr.markForCheck();
+      return;
     }
     
-    // Only set chart data if series has data points
-    // Create completely new object references for change detection
-    if (series.length > 0) {
-      // Create a completely new array with new object references
-      let newSeries = series.map(point => ({
-        name: String(point.name || ''),
-        value: Number(point.value || 0)
-      }));
-      
-      // Area charts need at least 2 points to render properly
-      // If we only have 1 point, duplicate it to create a valid chart
-      if (newSeries.length === 1) {
-        const singlePoint = newSeries[0];
-        // Create a duplicate point slightly before (for time-based charts, subtract a small time unit)
-        const duplicatePoint = {
-          name: singlePoint.name, // Keep same time for single-point data
-          value: singlePoint.value
-        };
-        newSeries = [duplicatePoint, ...newSeries];
+    // Optimized: Direct extraction from known API structure
+    const series = buckets.map((item: any) => {
+      // Extract time from local field: "18/12/2025 12:00:00" -> "12:00"
+      let timeLabel = '';
+      if (item.local && typeof item.local === 'string') {
+        // Format: "DD/MM/YYYY HH:mm:ss" -> extract "HH:mm"
+        const timeMatch = item.local.match(/(\d{2}:\d{2}):\d{2}/);
+        timeLabel = timeMatch ? timeMatch[1] : item.local;
+      } else if (item.utc) {
+        // Fallback: format UTC timestamp
+        timeLabel = this.formatTime(item.utc);
       }
       
-      // Force new array reference for change detection
-      this.occupancyChartData = [];
-      this.occupancyChartData = [{
-        name: 'Occupancy',
-        series: newSeries
-      }];
-    } else {
-      // Only set to empty if it wasn't already empty to avoid unnecessary changes
-      if (this.occupancyChartData.length > 0) {
-      this.occupancyChartData = [];
-      }
-      console.warn('⚠️ Occupancy data processed but no valid series found. Data structure:', data);
-    }
+      return {
+        name: timeLabel || String(item.utc || ''),
+        value: Number(item.avg) || 0
+      };
+    });
+    
+    this.occupancyChartData = [{
+      name: 'Occupancy',
+      series: series
+    }];
     this.cdr.markForCheck();
   }
 
   private processDemographicsData(data: any): void {
-    const processSeries = (items: any[]) => {
-      if (!items || items.length === 0) {
-        return [];
-      }
-      
-      // Data sampling: Take every Nth item to reduce data points for faster rendering
-      // If more than 20 points, sample to keep max 20 points (ultra-optimized for 1-2 second load)
-      const maxPoints = 20;
-      const step = items.length > maxPoints ? Math.ceil(items.length / maxPoints) : 1;
-      const sampledItems = items.filter((_, index) => index % step === 0);
-      
-      // Pre-allocate arrays for better performance
-      const maleData: any[] = [];
-      const femaleData: any[] = [];
-      const initialSize = Math.min(sampledItems.length, 30);
-      maleData.length = initialSize;
-      femaleData.length = initialSize;
-      let index = 0;
-
-      for (const item of sampledItems) {
-        // Handle different time field names: utc, local, timestamp, hour, time
-        let time = '';
-        if (item.local) {
-          // Extract time from local string (e.g., "15/12/2025 09:00:00" -> "09:00")
-          const localMatch = item.local.match(/(\d{2}:\d{2}):\d{2}/);
-          if (localMatch) {
-            time = localMatch[1];
-          } else {
-            time = this.formatTime(item.local);
-          }
-        } else {
-          time = this.formatTime(item.utc || item.timestamp || item.hour || item.time);
-        }
-        
-        if (time) {
-          const maleValue = Number(item.male || item.maleCount || 0);
-          const femaleValue = Number(item.female || item.femaleCount || 0);
-          // Round to whole numbers (can't have fractional people)
-          maleData[index] = { name: time, value: isNaN(maleValue) ? 0 : Math.round(maleValue) };
-          femaleData[index] = { name: time, value: isNaN(femaleValue) ? 0 : Math.round(femaleValue) };
-          index++;
-        }
-      }
-      // Trim arrays to actual size
-      maleData.length = index;
-      femaleData.length = index;
-      return [
-        { name: 'Male', series: maleData },
-        { name: 'Female', series: femaleData }
-      ];
+    // Backend API structure: { siteId, fromUtc, toUtc, timezone, buckets: [{ utc, local, male, female }] }
+    // local format: "18/12/2025 12:00:00" -> extract "12:00"
+    const buckets = data?.buckets || [];
+    
+    if (buckets.length === 0) {
+      this.demographicsChartData = [];
+      this.cdr.markForCheck();
+      return;
+    }
+    
+    // Optimized: Direct field access from verified API structure
+    // Extract time once and reuse for both series (performance optimization)
+    const extractTime = (item: any): string => {
+      // Extract "HH:mm" from "DD/MM/YYYY HH:mm:ss" format (API always provides local)
+      const timeMatch = item.local?.match(/(\d{2}:\d{2}):\d{2}/);
+      return timeMatch ? timeMatch[1] : (item.local || String(item.utc || ''));
     };
-
-    let chartData: any[] = [];
     
-    if (Array.isArray(data)) {
-      chartData = processSeries(data);
-    } else if (data?.timeseries && Array.isArray(data.timeseries)) {
-      chartData = processSeries(data.timeseries);
-    } else if (data?.data && Array.isArray(data.data)) {
-      chartData = processSeries(data.data);
-    } else if (data?.buckets && Array.isArray(data.buckets)) {
-      chartData = processSeries(data.buckets);
-    }
+    const maleSeries = buckets.map((item: any) => ({
+      name: extractTime(item),
+      value: Number(item.male) || 0  // API always provides 'male' field
+    }));
     
-    // Only set chart data if it has valid series
-    // Create completely new object references for change detection
-    if (chartData.length > 0 && chartData[0]?.series?.length > 0) {
-      const newChartData = chartData.map(item => {
-        let newSeries = item.series.map((point: any) => ({
-          name: String(point.name || ''),
-          value: Number(point.value || 0)
-        }));
-        
-        // Area charts need at least 2 points to render properly
-        // If we only have 1 point, duplicate it to create a valid chart
-        if (newSeries.length === 1) {
-          const singlePoint = newSeries[0];
-          const duplicatePoint = {
-            name: singlePoint.name,
-            value: singlePoint.value
-          };
-          newSeries = [duplicatePoint, ...newSeries];
-        }
-        
-        return {
-          name: String(item.name || ''),
-          series: newSeries
-        };
-      });
-      // Force new array reference for change detection
-      this.demographicsChartData = [];
-      this.demographicsChartData = newChartData;
-    } else {
-      this.demographicsChartData = [];
-      console.warn('⚠️ Demographics data processed but no valid series found. Data structure:', data);
-    }
+    const femaleSeries = buckets.map((item: any) => ({
+      name: extractTime(item),
+      value: Number(item.female) || 0  // API always provides 'female' field
+    }));
+    
+    this.demographicsChartData = [
+      { name: 'Male', series: maleSeries },
+      { name: 'Female', series: femaleSeries }
+    ];
     this.cdr.markForCheck();
   }
 
   private processDemographicsAnalysisData(data: any): void {
-    let buckets: any[] = [];
+    // Backend API structure: { siteId, fromUtc, toUtc, timezone, buckets: [{ utc, local, male, female }] }
+    // Aggregate totals from buckets (backend doesn't provide pre-calculated totals)
+    const buckets = data?.buckets || [];
     
-    if (Array.isArray(data)) {
-      buckets = data;
-    } else if (data?.buckets && Array.isArray(data.buckets)) {
-      buckets = data.buckets;
-    } else if (data?.timeseries && Array.isArray(data.timeseries)) {
-      buckets = data.timeseries;
-    } else if (data?.data && Array.isArray(data.data)) {
-      buckets = data.data;
-    }
-
-    // Calculate total male and female counts
+    // Optimized: Direct aggregation from verified API structure
     let totalMale = 0;
     let totalFemale = 0;
-
-    buckets.forEach((item: any) => {
-      const maleValue = Number(item.male || item.maleCount || 0);
-      const femaleValue = Number(item.female || item.femaleCount || 0);
-      if (!isNaN(maleValue)) totalMale += maleValue;
-      if (!isNaN(femaleValue)) totalFemale += femaleValue;
-    });
-
-    // Create pie chart data - always create new array reference for change detection
-    const newAnalysisData = [
-      { name: 'Male', value: Math.round(totalMale) },
-      { name: 'Female', value: Math.round(totalFemale) }
-    ].map(item => ({
-      name: String(item.name || ''),
-      value: Number(item.value || 0)
-    })); // Create new object references with explicit types
-    // Force new array reference for change detection
-    this.demographicsAnalysisChartData = [];
-    this.demographicsAnalysisChartData = newAnalysisData;
-    // Pre-compute percentages for template
+    
+    for (const item of buckets) {
+      totalMale += Number(item.male) || 0;    // API always provides 'male' field
+      totalFemale += Number(item.female) || 0; // API always provides 'female' field
+    }
+    
+    this.demographicsAnalysisChartData = [
+      { name: 'Male', value: totalMale },
+      { name: 'Female', value: totalFemale }
+    ];
+    
+    // Calculate percentages from aggregated totals (minimal calculation for display)
     this.updateDemographicsPercentages();
     this.cdr.markForCheck();
   }
 
+  /**
+   * Format UTC timestamp to time string (HH:mm format)
+   * Used as fallback when local field is not available
+   */
   private formatTime(timestamp: number | string): string {
     if (!timestamp && timestamp !== 0) return '';
     
     try {
-      let date: Date;
+      const date = typeof timestamp === 'number' 
+        ? (timestamp < 10000000000 ? new Date(timestamp * 1000) : new Date(timestamp))
+        : new Date(timestamp);
       
-      // Handle number (epoch milliseconds or seconds)
-      if (typeof timestamp === 'number') {
-        // If it's a small number, assume it's seconds, otherwise milliseconds
-        date = timestamp < 10000000000 ? new Date(timestamp * 1000) : new Date(timestamp);
-      } else {
-        // Handle string formats like "15/12/2025 09:00:00" (DD/MM/YYYY HH:mm:ss)
-        const dateStrMatch = timestamp.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
-        if (dateStrMatch) {
-          // Parse DD/MM/YYYY HH:mm:ss format
-          const [, day, month, year, hour, minute, second] = dateStrMatch;
-          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute), parseInt(second));
-        } else {
-          // Try parsing directly
-          date = new Date(timestamp);
-        }
-      }
-      
-      if (isNaN(date.getTime())) {
-        // Try parsing as hour number (0-23)
-        const hourNum = parseInt(timestamp.toString());
-        if (!isNaN(hourNum) && hourNum >= 0 && hourNum <= 23) {
-          return `${hourNum.toString().padStart(2, '0')}:00`;
-        }
-        return '';
-      }
+      if (isNaN(date.getTime())) return '';
       
       return date.toLocaleTimeString('en-US', { hour: '2-digit', minute: '2-digit' });
-    } catch (err) {
-      console.error('❌ Dashboard: Error formatting time:', {
-        error: err,
-        timestamp: timestamp,
-        timestampType: new Date().toISOString()
-      });
-      // Try to extract hour if it's a number
-      const hourNum = parseInt(timestamp.toString());
-      if (!isNaN(hourNum) && hourNum >= 0 && hourNum <= 23) {
-        return `${hourNum.toString().padStart(2, '0')}:00`;
-      }
+    } catch {
       return '';
     }
   }
@@ -750,8 +602,9 @@ export class DashboardComponent implements OnInit, OnDestroy {
         
         // Only update if we got a valid number AND selected date is today
         // For past or future dates, live occupancy should remain 0
+        // Backend should provide rounded occupancy value - use it directly
         if (!isNaN(occupancyValue) && occupancyValue >= 0 && this.isSelectedDateToday()) {
-          this.liveOccupancy = Math.round(occupancyValue);
+          this.liveOccupancy = occupancyValue; // Backend should provide rounded value
           this.cdr.markForCheck();
         } else if (!this.isSelectedDateToday()) {
           // Ensure live occupancy is 0 for past/future dates
@@ -877,40 +730,37 @@ export class DashboardComponent implements OnInit, OnDestroy {
 
   // Computed properties cached for template performance - recalculated when underlying values change
   get footfallChange(): { value: number; isPositive: boolean } {
-    // Return cached value if available (will be invalidated when todaysFootfall or previousFootfall change)
+    // Use backend-provided change directly - NO calculation
+    // Backend may provide footfallChange in the API response, but it's optional
     if (this._footfallChange !== undefined) {
       return this._footfallChange;
     }
-    // Calculate and cache
-      this._footfallChange = this.calculateFootfallChange();
-    return this._footfallChange;
-  }
-
-  private calculateFootfallChange(): { value: number; isPositive: boolean } {
-    if (this.previousFootfall === 0) return { value: 0, isPositive: true };
-    const change = ((this.todaysFootfall - this.previousFootfall) / this.previousFootfall) * 100;
-    return { value: Math.abs(change), isPositive: change >= 0 };
+    // Default if backend doesn't provide change (optional field)
+    return { value: 0, isPositive: true };
   }
 
   get dwellTimeChange(): { value: number; isPositive: boolean } {
-    // Return cached value if available (will be invalidated when avgDwellTime or previousDwellTime change)
+    // Use backend-provided change directly - NO calculation
+    // Backend may provide dwellTimeChange in the API response, but it's optional
     if (this._dwellTimeChange !== undefined) {
       return this._dwellTimeChange;
     }
-    // Calculate and cache
-      this._dwellTimeChange = this.calculateDwellTimeChange();
-    return this._dwellTimeChange;
-  }
-
-  private calculateDwellTimeChange(): { value: number; isPositive: boolean } {
-    if (this.previousDwellTime === 0) return { value: 0, isPositive: true };
-    const change = ((this.avgDwellTime - this.previousDwellTime) / this.previousDwellTime) * 100;
-    return { value: Math.abs(change), isPositive: change >= 0 };
+    // Default if backend doesn't provide change (optional field)
+    return { value: 0, isPositive: true };
   }
 
   onDateChange(date: Date | null): void {
     if (date) {
-      this.selectedDate = date;
+      // Normalize date to remove time component - we only care about the date
+      // Use UTC methods to ensure consistent date normalization regardless of timezone
+      const normalizedDate = new Date(Date.UTC(
+        date.getUTCFullYear(),
+        date.getUTCMonth(),
+        date.getUTCDate(),
+        0, 0, 0, 0
+      ));
+      this.selectedDate = normalizedDate;
+      
       // Reset live occupancy when date changes - will be set correctly in loadDashboardData
       this.liveOccupancy = 0;
       // Update date display text immediately
@@ -919,7 +769,8 @@ export class DashboardComponent implements OnInit, OnDestroy {
       this._footfallChange = undefined;
       this._dwellTimeChange = undefined;
       // Update notification service with selected date
-      this.notificationService.setSelectedDate(date);
+      this.notificationService.setSelectedDate(normalizedDate);
+      console.log('📅 Date changed to:', normalizedDate.toISOString(), 'Fetching data from API...');
       this.loadDashboardData();
       this.cdr.markForCheck();
     }
@@ -953,6 +804,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
   }
 
   private updateDemographicsPercentages(): void {
+    // Calculate percentages from pie chart data (backend doesn't provide pre-calculated percentages)
     if (this.demographicsAnalysisChartData.length === 0) {
       this.malePercentage = 0;
       this.femalePercentage = 0;
@@ -966,6 +818,7 @@ export class DashboardComponent implements OnInit, OnDestroy {
       if (d.name === 'Male') male = d.value || 0;
       if (d.name === 'Female') female = d.value || 0;
     }
+    
     const total = male + female;
     this.malePercentage = total === 0 ? 0 : Math.round((male / total) * 100);
     this.femalePercentage = total === 0 ? 0 : Math.round((female / total) * 100);

@@ -8,14 +8,28 @@ import { AuthInterceptor } from './core/interceptors/auth.interceptor';
 import { CacheInterceptor } from './core/interceptors/cache.interceptor';
 
 // Suppress Angular animation warnings for non-animatable properties
+// Also suppress routine Socket.IO disconnect warnings during reconnection
 const originalWarn = console.warn;
 console.warn = function(...args: any[]) {
   const message = args[0]?.toString() || '';
+  const fullMessage = args.map(arg => String(arg)).join(' ');
+  
+  // Suppress Angular animation warnings
   if (message.includes('strokeDashoffset') || 
       message.includes('not animatable properties') ||
       message.includes('animationState')) {
     return;
   }
+  
+  // Suppress routine Socket.IO disconnect warnings (transport close, ping timeout)
+  // These are expected during reconnection attempts
+  if (fullMessage.includes('Socket.IO disconnected') && 
+      (fullMessage.includes('transport close') || 
+       fullMessage.includes('ping timeout') ||
+       fullMessage.includes('transport error'))) {
+    return; // Suppress routine disconnect warnings
+  }
+  
   originalWarn.apply(console, args);
 };
 

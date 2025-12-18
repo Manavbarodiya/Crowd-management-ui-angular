@@ -197,7 +197,22 @@ export class EntriesComponent implements OnInit, OnDestroy {
     }
 
     try {
-      const date = new Date(typeof dateTime === 'string' ? dateTime : dateTime);
+      // API provides entryLocal/exitLocal as "DD/MM/YYYY HH:mm:ss" format
+      // Parse this format directly for better performance
+      let date: Date;
+      if (typeof dateTime === 'string' && dateTime.includes('/')) {
+        // Parse "DD/MM/YYYY HH:mm:ss" format
+        const parts = dateTime.match(/(\d{2})\/(\d{2})\/(\d{4})\s+(\d{2}):(\d{2}):(\d{2})/);
+        if (parts) {
+          const [, day, month, year, hour, minute] = parts;
+          date = new Date(parseInt(year), parseInt(month) - 1, parseInt(day), parseInt(hour), parseInt(minute));
+        } else {
+          date = new Date(dateTime);
+        }
+      } else {
+        date = new Date(typeof dateTime === 'string' ? dateTime : dateTime);
+      }
+      
       if (isNaN(date.getTime())) {
         const result = '-';
         this.dateTimeCache.set(cacheKey, result);
@@ -212,11 +227,6 @@ export class EntriesComponent implements OnInit, OnDestroy {
       this.dateTimeCache.set(cacheKey, result);
       return result;
     } catch (err) {
-      console.error('❌ Entries: Error formatting date/time:', {
-        error: err,
-        dateTime: dateTime,
-        timestamp: new Date().toISOString()
-      });
       const result = '-';
       this.dateTimeCache.set(cacheKey, result);
       return result;
@@ -234,17 +244,18 @@ export class EntriesComponent implements OnInit, OnDestroy {
   }
 
   private preprocessRecord(record: any): any {
-    // Pre-compute all formatting and derived values to avoid template method calls
-    const personName = record.personName || record.name || record.visitorName || 'N/A';
+    // Optimized: Use exact API structure
+    // Backend provides: { personId, personName, gender, zoneId, zoneName, severity, entryUtc, entryLocal, exitUtc, exitLocal, dwellMinutes }
+    const personName = record.personName || 'N/A';
     const gender = record.gender || 'N/A';
-    const isActive = !record.exitUtc && !record.exitTime && !record.exitLocal;
+    const isActive = !record.exitUtc && !record.exitLocal; // Active if no exit time
     
-    // Pre-compute formatted dates
-    const entryDateTime = this.formatDateTime(record.entryUtc || record.entryTime || record.entryLocal);
-    const exitDateTime = isActive ? '--' : this.formatDateTime(record.exitUtc || record.exitTime || record.exitLocal);
+    // Pre-compute formatted dates (backend provides entryLocal/exitLocal as strings)
+    const entryDateTime = this.formatDateTime(record.entryLocal || record.entryUtc);
+    const exitDateTime = isActive ? '--' : this.formatDateTime(record.exitLocal || record.exitUtc);
     
-    // Pre-compute dwell time
-    const dwellTime = isActive ? '--' : this.formatDwellTime(record.dwellMinutes || record.dwellTime || record.dwell);
+    // Pre-compute dwell time (backend provides dwellMinutes as number or null)
+    const dwellTime = isActive ? '--' : this.formatDwellTime(record.dwellMinutes);
     
     // Pre-compute avatar URL
     const seed = record.personId 

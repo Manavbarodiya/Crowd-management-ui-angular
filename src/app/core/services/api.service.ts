@@ -33,8 +33,21 @@ export class ApiService {
   ) {}
 
   private createSitesCache() {
+    console.log('📤 API REQUEST: getSites', {
+      url: `${this.base}/api/sites`,
+      method: 'GET',
+      timestamp: new Date().toISOString()
+    });
+    
     return this.http.get<any[]>(`${this.base}/api/sites`).pipe(
       tap(sites => {
+        console.log('📥 API RESPONSE: /api/sites', {
+          url: `${this.base}/api/sites`,
+          status: 'success',
+          response: sites,
+          count: sites?.length || 0,
+          timestamp: new Date().toISOString()
+        });
         // If no siteId is set, use the first site from the list
         // Note: SiteService notification is handled by LayoutComponent
         // to avoid circular dependencies
@@ -52,7 +65,7 @@ export class ApiService {
           url: `${this.base}/api/sites`,
           timestamp: new Date().toISOString()
         };
-        console.error('❌ Failed to fetch sites:', errorInfo);
+        console.error('❌ API ERROR: /api/sites', errorInfo);
         return of([]);
       }),
       shareReplay(1)
@@ -493,6 +506,19 @@ export class ApiService {
     dwell: any;
   }> {
     const finalPayload = this.createSharedPayload(fromUtc, toUtc);
+    
+    // Log API request
+    console.log('📤 API REQUEST: getSummaryCardsBatch', {
+      url: `${this.base}/api/analytics/footfall` + ' & ' + `${this.base}/api/analytics/dwell`,
+      method: 'POST',
+      payload: finalPayload,
+      payloadFormatted: {
+        ...finalPayload,
+        fromUtcDate: new Date(finalPayload.fromUtc).toISOString(),
+        toUtcDate: new Date(finalPayload.toUtc).toISOString()
+      },
+      timestamp: new Date().toISOString()
+    });
 
     // Execute both requests in parallel using forkJoin for maximum speed
     // Each observable handles its own errors and returns null if it fails
@@ -500,6 +526,19 @@ export class ApiService {
     return forkJoin({
       footfall: this.http.post<any>(`${this.base}/api/analytics/footfall`, finalPayload).pipe(
         timeout(this.REQUEST_TIMEOUT),
+        tap(res => {
+          // Log API response with full structure
+          console.log('📥 API RESPONSE: /api/analytics/footfall', {
+            url: `${this.base}/api/analytics/footfall`,
+            status: 'success',
+            response: JSON.parse(JSON.stringify(res)), // Deep clone to show full structure
+            responseKeys: res ? Object.keys(res) : [],
+            timestamp: new Date().toISOString()
+          });
+          if (res?.siteId) {
+            this.auth.setSiteId(res.siteId);
+          }
+        }),
         // OPTIMIZATION: Retry transient network errors (up to 1 retry with 500ms delay)
         retry({
           count: 1,
@@ -511,15 +550,30 @@ export class ApiService {
             throw error;
           }
         }),
+        catchError(err => {
+          console.error('❌ API ERROR: /api/analytics/footfall', {
+            url: `${this.base}/api/analytics/footfall`,
+            error: err,
+            timestamp: new Date().toISOString()
+          });
+          return this.handleApiError(err, 'Footfall', `${this.base}/api/analytics/footfall`);
+        })
+      ),
+      dwell: this.http.post<any>(`${this.base}/api/analytics/dwell`, finalPayload).pipe(
+        timeout(this.REQUEST_TIMEOUT),
         tap(res => {
+          // Log API response with full structure
+          console.log('📥 API RESPONSE: /api/analytics/dwell', {
+            url: `${this.base}/api/analytics/dwell`,
+            status: 'success',
+            response: JSON.parse(JSON.stringify(res)), // Deep clone to show full structure
+            responseKeys: res ? Object.keys(res) : [],
+            timestamp: new Date().toISOString()
+          });
           if (res?.siteId) {
             this.auth.setSiteId(res.siteId);
           }
         }),
-        catchError(err => this.handleApiError(err, 'Footfall', `${this.base}/api/analytics/footfall`))
-      ),
-      dwell: this.http.post<any>(`${this.base}/api/analytics/dwell`, finalPayload).pipe(
-        timeout(this.REQUEST_TIMEOUT),
         // OPTIMIZATION: Retry transient network errors (up to 1 retry with 500ms delay)
         retry({
           count: 1,
@@ -530,14 +584,24 @@ export class ApiService {
             throw error;
           }
         }),
-        tap(res => {
-          if (res?.siteId) {
-            this.auth.setSiteId(res.siteId);
-          }
-        }),
-        catchError(err => this.handleApiError(err, 'Dwell', `${this.base}/api/analytics/dwell`))
+        catchError(err => {
+          console.error('❌ API ERROR: /api/analytics/dwell', {
+            url: `${this.base}/api/analytics/dwell`,
+            error: err,
+            timestamp: new Date().toISOString()
+          });
+          return this.handleApiError(err, 'Dwell', `${this.base}/api/analytics/dwell`);
+        })
       )
     }).pipe(
+      tap(results => {
+        // Log combined batch response
+        console.log('📥 API RESPONSE: getSummaryCardsBatch (combined)', {
+          footfall: results.footfall,
+          dwell: results.dwell,
+          timestamp: new Date().toISOString()
+        });
+      }),
       // OPTIMIZATION: Cache batch results for same payload
       shareReplay(1),
       // Add catchError at forkJoin level as additional safety net
@@ -561,6 +625,19 @@ export class ApiService {
     demographics: any;
   }> {
     const finalPayload = this.createSharedPayload(fromUtc, toUtc);
+    
+    // Log API request
+    console.log('📤 API REQUEST: getChartsBatch', {
+      url: `${this.base}/api/analytics/occupancy` + ' & ' + `${this.base}/api/analytics/demographics`,
+      method: 'POST',
+      payload: finalPayload,
+      payloadFormatted: {
+        ...finalPayload,
+        fromUtcDate: new Date(finalPayload.fromUtc).toISOString(),
+        toUtcDate: new Date(finalPayload.toUtc).toISOString()
+      },
+      timestamp: new Date().toISOString()
+    });
 
     // Execute both requests in parallel using forkJoin for maximum speed
     // Each observable handles its own errors and returns null if it fails
@@ -568,6 +645,16 @@ export class ApiService {
     return forkJoin({
       occupancy: this.http.post<any>(`${this.base}/api/analytics/occupancy`, finalPayload).pipe(
         timeout(this.REQUEST_TIMEOUT),
+        tap(res => {
+          // Log API response with full structure
+          console.log('📥 API RESPONSE: /api/analytics/occupancy', {
+            url: `${this.base}/api/analytics/occupancy`,
+            status: 'success',
+            response: JSON.parse(JSON.stringify(res)), // Deep clone to show full structure
+            responseKeys: res ? Object.keys(res) : [],
+            timestamp: new Date().toISOString()
+          });
+        }),
         // OPTIMIZATION: Retry transient network errors
         retry({
           count: 1,
@@ -578,10 +665,27 @@ export class ApiService {
             throw error;
           }
         }),
-        catchError(err => this.handleApiError(err, 'Occupancy', `${this.base}/api/analytics/occupancy`))
+        catchError(err => {
+          console.error('❌ API ERROR: /api/analytics/occupancy', {
+            url: `${this.base}/api/analytics/occupancy`,
+            error: err,
+            timestamp: new Date().toISOString()
+          });
+          return this.handleApiError(err, 'Occupancy', `${this.base}/api/analytics/occupancy`);
+        })
       ),
       demographics: this.http.post<any>(`${this.base}/api/analytics/demographics`, finalPayload).pipe(
         timeout(this.REQUEST_TIMEOUT),
+        tap(res => {
+          // Log API response with full structure
+          console.log('📥 API RESPONSE: /api/analytics/demographics', {
+            url: `${this.base}/api/analytics/demographics`,
+            status: 'success',
+            response: JSON.parse(JSON.stringify(res)), // Deep clone to show full structure
+            responseKeys: res ? Object.keys(res) : [],
+            timestamp: new Date().toISOString()
+          });
+        }),
         // OPTIMIZATION: Retry transient network errors
         retry({
           count: 1,
@@ -592,9 +696,24 @@ export class ApiService {
             throw error;
           }
         }),
-        catchError(err => this.handleApiError(err, 'Demographics', `${this.base}/api/analytics/demographics`))
+        catchError(err => {
+          console.error('❌ API ERROR: /api/analytics/demographics', {
+            url: `${this.base}/api/analytics/demographics`,
+            error: err,
+            timestamp: new Date().toISOString()
+          });
+          return this.handleApiError(err, 'Demographics', `${this.base}/api/analytics/demographics`);
+        })
       )
     }).pipe(
+      tap(results => {
+        // Log combined batch response
+        console.log('📥 API RESPONSE: getChartsBatch (combined)', {
+          occupancy: results.occupancy,
+          demographics: results.demographics,
+          timestamp: new Date().toISOString()
+        });
+      }),
       // OPTIMIZATION: Cache batch results for same payload
       shareReplay(1),
       // Add catchError at forkJoin level as additional safety net

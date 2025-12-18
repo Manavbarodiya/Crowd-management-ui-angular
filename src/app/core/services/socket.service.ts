@@ -9,6 +9,9 @@ export class SocketService implements OnDestroy {
   private socket: Socket | null = null;
   private isInitializing = false;
   private eventSubjects: Map<string, Subject<any>> = new Map();
+  private reconnectAttempts = 0;
+  private lastDisconnectReason: string | null = null;
+  private suppressRoutineWarnings = false; // Flag to suppress routine disconnect warnings
 
   constructor(private auth: AuthService) {}
 
@@ -40,25 +43,41 @@ export class SocketService implements OnDestroy {
       this.socket.disconnect();
       this.socket = null;
     }
-    // Use environment API URL or fallback to backend API server
-    // In development, proxy handles /api routes, but socket.io needs direct connection
-    let socketUrl = environment.apiUrl;
-    if (!socketUrl || socketUrl === '') {
-      // Fallback to backend API server (matches proxy.conf.json target)
+    // Use environment API URL or use proxy in development
+    // In development, proxy handles /socket.io routes to avoid CORS issues
+    let socketUrl: string | undefined = environment.apiUrl;
+    const isDevelopment = !environment.production;
+    const useProxy = isDevelopment && (!socketUrl || socketUrl === '');
+    
+    if (useProxy) {
+      // Use undefined to connect through Angular proxy (relative URL - current origin)
+      // This avoids CORS issues in development
+      socketUrl = undefined;
+    } else if (!socketUrl || socketUrl === '') {
+      // Fallback to backend API server (for production or when proxy not available)
       socketUrl = 'https://hiring-dev.internal.kloudspot.com';
     }
-    // Remove trailing slash if present
-    socketUrl = socketUrl.replace(/\/$/, '');
+    
+    // Remove trailing slash if present (only if URL is defined)
+    if (socketUrl) {
+      socketUrl = socketUrl.replace(/\/$/, '');
+    }
+    
+    // Only use withCredentials when connecting directly (not through proxy)
+    // Proxy handles CORS, so credentials aren't needed
+    const useCredentials = !useProxy;
+    
     this.socket = io(socketUrl, {
-      transports: ['websocket', 'polling'], // Try websocket first for better performance
+      transports: ['polling', 'websocket'], // Try polling first (more reliable), then upgrade to websocket
       upgrade: true,
       reconnection: true,
-      reconnectionAttempts: 5,
+      reconnectionAttempts: Infinity, // Allow infinite reconnection attempts
       reconnectionDelay: 1000,
-      reconnectionDelayMax: 5000,
-      timeout: 10000, // 10 second connection timeout (reduced for faster failure detection)
+      reconnectionDelayMax: 10000, // Max 10 seconds between attempts
+      randomizationFactor: 0.5, // Add randomness to prevent thundering herd
+      timeout: 20000, // 20 second connection timeout
       path: '/socket.io/', // Default socket.io path
-      withCredentials: true, // For cross-origin connections
+      withCredentials: useCredentials, // Only use credentials when not using proxy
       forceNew: false, // Reuse existing connection if available
       auth: {
         token: token
@@ -71,41 +90,94 @@ export class SocketService implements OnDestroy {
 
     this.socket.on('connect', () => {
       this.isInitializing = false;
-      console.log('✅ Socket.IO connected successfully');
+      this.reconnectAttempts = 0;
+      this.suppressRoutineWarnings = false;
+      const transport = this.socket?.io?.engine?.transport?.name || 'unknown';
+      console.log(`✅ Socket.IO connected successfully (transport: ${transport})`);
     });
 
     this.socket.on('connect_error', (error: any) => {
-      console.error('❌ Socket.IO connection error:', {
-        message: error.message,
-        type: error.type,
-        description: error.description,
-        context: error.context,
-        transport: error.transport,
-        timestamp: new Date().toISOString()
-      });
       this.isInitializing = false;
+      this.reconnectAttempts++;
+      
+      // Only log significant errors, not routine transport failures
+      const isRoutineError = error.type === 'TransportError' && 
+                            (error.message?.includes('websocket error') || 
+                             error.message?.includes('xhr poll error'));
+      
+      if (!isRoutineError || this.reconnectAttempts === 1) {
+        // Log first attempt or non-routine errors
+        console.error('❌ Socket.IO connection error:', {
+          message: error.message,
+          type: error.type,
+          transport: error.transport,
+          attempt: this.reconnectAttempts,
+          timestamp: new Date().toISOString()
+        });
+      }
       
       // If error is due to authentication, check token expiration
-      if (error.message?.includes('auth') || error.message?.includes('token') || error.message?.includes('401') || error.message?.includes('403')) {
+      if (error.message?.includes('auth') || error.message?.includes('token') || 
+          error.message?.includes('401') || error.message?.includes('403')) {
         if (this.auth.isTokenExpired()) {
           console.warn('⚠️ Socket.IO: Connection failed due to expired token');
+          // Disable reconnection if token is expired
+          if (this.socket) {
+            this.socket.disconnect();
+          }
         }
       }
     });
 
     this.socket.on('disconnect', (reason) => {
-      console.warn('⚠️ Socket.IO disconnected:', {
-        reason: reason,
-        timestamp: new Date().toISOString()
-      });
       this.isInitializing = false;
+      this.lastDisconnectReason = reason;
+      
+      // Suppress routine disconnect warnings during reconnection attempts
+      // Only log if it's a significant disconnect reason or first disconnect
+      const isRoutineDisconnect = reason === 'transport close' || 
+                                  reason === 'ping timeout' ||
+                                  (reason === 'transport error' && this.reconnectAttempts > 0);
+      
+      if (!isRoutineDisconnect || !this.suppressRoutineWarnings) {
+        console.warn('⚠️ Socket.IO disconnected:', {
+          reason: reason,
+          timestamp: new Date().toISOString()
+        });
+      }
+      
+      // Enable suppression for routine disconnects during reconnection
+      if (isRoutineDisconnect) {
+        this.suppressRoutineWarnings = true;
+      }
       
       // If disconnected due to authentication issues, don't auto-reconnect if token is expired
       if (reason === 'io server disconnect' || reason === 'transport close') {
         if (this.auth.isTokenExpired()) {
           console.warn('⚠️ Socket.IO: Not reconnecting - token expired');
+          if (this.socket) {
+            this.socket.disconnect();
+          }
         }
       }
+    });
+    
+    // Track reconnection attempts
+    this.socket.on('reconnect_attempt', (attemptNumber) => {
+      this.reconnectAttempts = attemptNumber;
+      // Suppress warnings during reconnection attempts
+      this.suppressRoutineWarnings = true;
+    });
+    
+    this.socket.on('reconnect', (attemptNumber) => {
+      this.reconnectAttempts = 0;
+      this.suppressRoutineWarnings = false;
+      console.log(`✅ Socket.IO reconnected after ${attemptNumber} attempt(s)`);
+    });
+    
+    this.socket.on('reconnect_failed', () => {
+      this.suppressRoutineWarnings = false;
+      console.error('❌ Socket.IO: Reconnection failed after all attempts');
     });
   }
 
