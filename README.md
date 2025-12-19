@@ -2,6 +2,12 @@
 
 A real-time web application for monitoring crowd occupancy, footfall, demographics, and visitor entries in public venues like malls, offices, and campuses.
 
+## 🌐 Live Demo
+
+**🔗 [View Live Site on Netlify](https://crowd-management-ui-angular.netlify.app)**
+
+Experience the full application with real-time updates, interactive charts, and all features live on Netlify.
+
 ## 🚀 Features
 
 - **Live Dashboard** - Real-time occupancy tracking with live updates via Socket.IO
@@ -231,6 +237,7 @@ This creates optimized production files in `dist/crowd-management-ui/` directory
 Upload the contents of `dist/crowd-management-ui/` to any static hosting service:
 
 - **Netlify** - Drag and drop the folder or connect via Git
+  - **Live Site**: [https://crowd-management-ui-angular.netlify.app](https://crowd-management-ui-angular.netlify.app)
 - **Vercel** - Deploy via CLI: `vercel --prod`
 - **GitHub Pages** - Push the dist folder to gh-pages branch
 - **Firebase Hosting** - Use Firebase CLI
