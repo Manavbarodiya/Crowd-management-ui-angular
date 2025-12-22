@@ -14,11 +14,12 @@ import { Subscription } from 'rxjs';
 })
 export class NotificationBellComponent implements OnInit, OnDestroy {
   showDropdown = false;
-  alerts: (Alert & { _formattedTime?: string })[] = [];
+  alerts: (Alert & { _formattedTime?: string; _formattedDate?: string; _priority?: string })[] = [];
   unreadCount = 0;
   private subscription?: Subscription;
   // Cache for formatted times to avoid recalculating on every change detection
   private timeCache = new Map<string, string>();
+  private dateCache = new Map<string, string>();
   private cacheTimeout = 60000; // Cache for 1 minute
 
   constructor(
@@ -27,21 +28,27 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
   ) {}
 
   ngOnInit(): void {
+    // Subscribe to alert changes
     this.subscription = this.notificationService.alerts$.subscribe(() => {
       // Use filtered alerts based on selected date and pre-process them
       const rawAlerts = this.notificationService.getFilteredAlerts();
       this.alerts = rawAlerts.map(alert => ({
         ...alert,
-        _formattedTime: this.formatAlertTime(alert.timestamp)
+        _formattedTime: this.formatAlertTime(alert.timestamp),
+        _formattedDate: this.formatAlertDate(alert.timestamp),
+        _priority: this.getPriorityLabel(alert.severity)
       }));
       this.unreadCount = this.notificationService.getFilteredUnreadCount();
       this.cdr.markForCheck();
     });
+    
     // Initialize with filtered alerts and pre-process them
     const rawAlerts = this.notificationService.getFilteredAlerts();
     this.alerts = rawAlerts.map(alert => ({
       ...alert,
-      _formattedTime: this.formatAlertTime(alert.timestamp)
+      _formattedTime: this.formatAlertTime(alert.timestamp),
+      _formattedDate: this.formatAlertDate(alert.timestamp),
+      _priority: this.getPriorityLabel(alert.severity)
     }));
     this.unreadCount = this.notificationService.getFilteredUnreadCount();
     this.cdr.markForCheck();
@@ -52,6 +59,7 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
       this.subscription.unsubscribe();
     }
     this.timeCache.clear();
+    this.dateCache.clear();
   }
 
   toggleDropdown(): void {
@@ -110,10 +118,56 @@ export class NotificationBellComponent implements OnInit, OnDestroy {
     }
   }
 
-  clearAll(): void {
-    this.notificationService.clearAlerts();
-    this.closeDropdown();
+  formatAlertDate(timestamp: number | string): string {
+    const cacheKey = String(timestamp);
+    const cached = this.dateCache.get(cacheKey);
+    if (cached) {
+      return cached;
+    }
+
+    try {
+      const date = new Date(typeof timestamp === 'string' ? timestamp : timestamp);
+      if (isNaN(date.getTime())) {
+        const result = 'Invalid date';
+        this.dateCache.set(cacheKey, result);
+        return result;
+      }
+
+      // Format: "March 03 2025 10:12"
+      const months = ['January', 'February', 'March', 'April', 'May', 'June', 
+                     'July', 'August', 'September', 'October', 'November', 'December'];
+      const month = months[date.getMonth()];
+      const day = date.getDate().toString().padStart(2, '0');
+      const year = date.getFullYear();
+      const hours = date.getHours().toString().padStart(2, '0');
+      const minutes = date.getMinutes().toString().padStart(2, '0');
+
+      const result = `${month} ${day} ${year} ${hours}:${minutes}`;
+      this.dateCache.set(cacheKey, result);
+      return result;
+    } catch (err) {
+      console.error('❌ NotificationBell: Error formatting alert date:', {
+        error: err,
+        timestamp: timestamp
+      });
+      const result = 'Invalid date';
+      this.dateCache.set(cacheKey, result);
+      return result;
+    }
   }
+
+  getPriorityLabel(severity: string): string {
+    // Map severity to priority labels (High/Medium/Low)
+    const severityLower = severity?.toLowerCase() || '';
+    if (severityLower === 'high' || severityLower === 'critical') {
+      return 'High';
+    } else if (severityLower === 'medium') {
+      return 'Medium';
+    } else {
+      return 'Low';
+    }
+  }
+
 
   trackByAlertId(index: number, alert: Alert): string {
     return alert.raw?.eventId || alert.timestamp?.toString() || index.toString();

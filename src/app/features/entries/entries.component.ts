@@ -3,6 +3,9 @@ import { CommonModule } from '@angular/common';
 import { MatIconModule } from '@angular/material/icon';
 import { ApiService } from '../../core/services/api.service';
 import { SiteService } from '../../core/services/site.service';
+import { SocketService } from '../../core/services/socket.service';
+import { NotificationService, Alert } from '../../core/services/notification.service';
+import { AuthService } from '../../core/services/auth.service';
 import { Subscription } from 'rxjs';
 
 @Component({
@@ -29,6 +32,7 @@ export class EntriesComponent implements OnInit, OnDestroy {
   
   private subscription?: Subscription;
   private siteChangeSubscription?: Subscription;
+  private socketSubscriptions: Subscription[] = [];
   // Cache for computed values
   private _pageNumbersCacheKey?: string;
   private dateTimeCache = new Map<string, string>();
@@ -36,14 +40,40 @@ export class EntriesComponent implements OnInit, OnDestroy {
   constructor(
     private api: ApiService,
     private siteService: SiteService,
+    private socket: SocketService,
+    private notificationService: NotificationService,
+    private auth: AuthService,
     private cdr: ChangeDetectorRef
   ) {}
 
   ngOnInit(): void {
+    // Initialize notification service with today's date (normalized like dashboard)
+    // Normalize date to remove time component - use local date methods then convert to UTC
+    const today = new Date();
+    const normalizedToday = new Date(Date.UTC(
+      today.getFullYear(),  // Use local year
+      today.getMonth(),     // Use local month
+      today.getDate(),      // Use local date
+      0, 0, 0, 0
+    ));
+    this.notificationService.setSelectedDate(normalizedToday);
+    
+    // Set current site ID for notification filtering
+    const currentSiteId = this.auth.getSiteId();
+    if (currentSiteId) {
+      this.notificationService.setCurrentSiteId(currentSiteId);
+    }
+    
+    // Setup socket listeners for real-time alerts
+    this.setupSocketListeners();
+    
     this.loadEntries();
     
     // Listen for site changes and reload entries immediately
-    this.siteChangeSubscription = this.siteService.siteChange$.subscribe(() => {
+    this.siteChangeSubscription = this.siteService.siteChange$.subscribe((siteId: string) => {
+      // Update notification service with new site ID
+      this.notificationService.setCurrentSiteId(siteId);
+      
       // Immediately show loading state
       this.loading = true;
       this.currentPage = 1; // Reset to first page when site changes
@@ -63,6 +93,13 @@ export class EntriesComponent implements OnInit, OnDestroy {
     if (this.siteChangeSubscription) {
       this.siteChangeSubscription.unsubscribe();
     }
+    // Unsubscribe from socket listeners
+    this.socketSubscriptions.forEach(sub => {
+      if (sub && !sub.closed) {
+        sub.unsubscribe();
+      }
+    });
+    this.socketSubscriptions = [];
     this.dateTimeCache.clear();
   }
 
@@ -300,5 +337,96 @@ export class EntriesComponent implements OnInit, OnDestroy {
     if (img) {
       img.src = 'https://i.pravatar.cc/150?img=1';
     }
+  }
+
+  private setupSocketListeners(): void {
+    // Listen for alert events and process them
+    const alertSub = this.socket.listen('alert').subscribe({
+      next: (alertData: any) => {
+        this.handleAlert(alertData);
+      },
+      error: (err) => {
+        const errorInfo = {
+          type: err.name || 'Socket Error',
+          message: err.message,
+          error: err,
+          event: 'alert',
+          timestamp: new Date().toISOString()
+        };
+        console.error('❌ Entries: Socket subscription error (alert):', errorInfo);
+      }
+    });
+    this.socketSubscriptions.push(alertSub);
+  }
+
+  private handleAlert(alertData: any): void {
+    // Check direction field first (e.g., "zone-exit", "zone-entry")
+    const direction = alertData.direction || '';
+    // Also check actionType as fallback
+    const actionTypeRaw = alertData.actionType || alertData.type || alertData.action || alertData.eventType || alertData.event || '';
+    const actionType = actionTypeRaw ? actionTypeRaw.toString().toLowerCase().trim() : '';
+    
+    // Use zone name if available, otherwise zone ID, otherwise fallback
+    const zone = alertData.zoneName || alertData.zone || alertData.zoneId || 'Unknown Zone';
+    // Use site name if available, otherwise site ID, otherwise fallback
+    const site = alertData.siteName || alertData.site || alertData.siteId || 'Unknown Site';
+    // Use person name if available
+    const personName = alertData.personName || alertData.name || '';
+    const severity = alertData.severity || alertData.level || 'info';
+    const timestamp = alertData.ts || alertData.timestamp || Date.now();
+    // Get siteId if available for filtering
+    const siteId = alertData.siteId || alertData.site || null;
+
+    // Determine if it's entry or exit from direction field (e.g., "zone-exit", "zone-entry")
+    const directionLower = direction.toString().toLowerCase();
+    const isEntry = directionLower.includes('entry') || directionLower.includes('enter') || 
+                    actionType === 'entry' || actionType === 'enter' || actionType === 'in' || 
+                    actionType.includes('entry') || actionType.includes('enter');
+    const isExit = directionLower.includes('exit') || directionLower.includes('leave') || 
+                   actionType === 'exit' || actionType === 'leave' || actionType === 'out' || 
+                   actionType.includes('exit') || actionType.includes('leave');
+
+    // Build a more readable message
+    let message = '';
+    if (personName) {
+      if (isEntry) {
+        message = `${personName} entered ${zone}`;
+      } else if (isExit) {
+        message = `${personName} exited ${zone}`;
+      } else {
+        // Default to exit if we can't determine
+        message = `${personName} exited ${zone}`;
+      }
+    } else {
+      // No person name, use action type and zone
+      if (isEntry) {
+        message = `ENTRY: ${zone}`;
+      } else if (isExit) {
+        message = `EXIT: ${zone}`;
+      } else {
+        message = zone;
+      }
+      if (site && site !== 'Unknown Site' && !site.includes('-') && !site.match(/^[0-9a-f]{8}-/i)) {
+        message += ` (${site})`;
+      }
+    }
+
+    // Store normalized actionType for use in notification bell
+    const normalizedActionType = isEntry ? 'entry' : 'exit';
+
+    const alert: Alert = {
+      actionType: normalizedActionType,
+      zone,
+      site,
+      siteId: siteId || undefined,
+      severity,
+      timestamp,
+      message: message,
+      raw: alertData
+    };
+
+    // Always add alerts on entries page (entries page shows today's data)
+    // The notification service will filter by date and site
+    this.notificationService.addAlert(alert);
   }
 }

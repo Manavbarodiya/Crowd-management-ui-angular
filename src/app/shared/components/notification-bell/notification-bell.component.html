@@ -8,23 +8,31 @@
 
   <div *ngIf="showDropdown" class="notification-dropdown">
     <div class="dropdown-header">
-      <h3>Notifications</h3>
-      <button *ngIf="alerts.length > 0" class="clear-btn" (click)="clearAll()">Clear All</button>
+      <h3>Alerts</h3>
+      <button class="close-btn" (click)="closeDropdown()" type="button" aria-label="Close alerts">
+        <mat-icon>close</mat-icon>
+      </button>
     </div>
     
     <div class="alerts-list">
       <div *ngIf="alerts.length === 0" class="no-alerts">
-        <p>No notifications</p>
+        <p>No alerts</p>
       </div>
       
       <div 
-        *ngFor="let alert of alerts.slice(0, 10); trackBy: trackByAlertId" 
-        class="alert-item"
-        [class]="'alert-' + alert.severity">
-        <div class="alert-icon">{{ alert.actionType === 'entry' ? '→' : '←' }}</div>
-        <div class="alert-content">
-          <div class="alert-message">{{ alert.message }}</div>
-          <div class="alert-time">{{ alert._formattedTime }}</div>
+        *ngFor="let alert of alerts; trackBy: trackByAlertId" 
+        class="alert-card"
+        [class]="'priority-' + alert._priority?.toLowerCase()">
+        <div class="alert-date">{{ alert._formattedDate }}</div>
+        <div class="alert-message">{{ alert.message }}</div>
+        <div class="alert-footer">
+          <div class="alert-location">
+            <mat-icon class="location-icon">location_on</mat-icon>
+            <span>{{ alert.zone || 'Unknown Zone' }}</span>
+          </div>
+          <span class="priority-badge" [class]="'priority-' + alert._priority?.toLowerCase()">
+            {{ alert._priority }}
+          </span>
         </div>
       </div>
     </div>
